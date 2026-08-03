@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Frame & Speed Controller</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <header>
+    <span class="title">🎞 Frame & Speed Controller</span>
+    <button id="openOptions" title="Configurar atajos">⚙</button>
+  </header>
+
+  <div id="noVideo" class="hint hidden">No se encontró vídeo en esta pestaña.</div>
+
+  <section id="controls">
+    <div class="row status">
+      <span id="stateBadge">--</span>
+      <span id="timeBadge">--:--</span>
+      <span id="speedBadge">1.00x</span>
+    </div>
+
+    <div class="row buttons-row">
+      <button id="frameBack" title="Retroceder 1 frame">⏮ Frame</button>
+      <button id="togglePlay" title="Play / Pausa">⏯</button>
+      <button id="frameForward" title="Avanzar 1 frame">Frame ⏭</button>
+    </div>
+
+    <div class="row buttons-row">
+      <button id="seekBack" title="Retroceder N segundos">⏪</button>
+      <button id="toggleMute" title="Silenciar">🔊</button>
+      <button id="seekForward" title="Avanzar N segundos">⏩</button>
+    </div>
+
+    <div class="row buttons-row">
+      <button id="toggleLoop" title="Bucle">🔁</button>
+      <button id="togglePip" title="Picture-in-Picture">🗔 PiP</button>
+      <button id="screenshot" title="Capturar frame">📸</button>
+    </div>
+
+    <div class="section-label">Velocidad <span class="muted">(escalonado hasta 2x · más arriba con los botones)</span></div>
+    <div class="row slider-row">
+      <button id="speedDown">−</button>
+      <input type="range" id="speedSlider" min="0" max="1" step="1" value="0" />
+      <button id="speedUp">+</button>
+    </div>
+    <div id="speedPresets" class="presets"></div>
+
+    <div class="section-label">FPS de este sitio</div>
+    <div class="row fps-row">
+      <span id="fpsInfo">detectando…</span>
+      <button id="useDetectedFps" title="Usar el FPS detectado para este dominio">Usar aquí</button>
+    </div>
+  </section>
+
+  <footer>
+    <a href="#" id="openDomainOptions">⚙ Atajos de este sitio</a>
+    <span>·</span>
+    <a href="#" id="openOptions2">Opciones globales</a>
+  </footer>
+
+  <script src="settings.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>

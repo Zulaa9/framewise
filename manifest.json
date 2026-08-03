@@ -1,0 +1,34 @@
+{
+  "manifest_version": 3,
+  "name": "Frame & Speed Controller",
+  "version": "1.1.0",
+  "description": "Avanza/retrocede fotograma a fotograma, controla la velocidad de reproducción y define atajos de teclado propios (globales o por sitio) para cualquier vídeo HTML5.",
+  "permissions": ["storage", "activeTab"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "Frame & Speed Controller",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["settings.js", "content.js"],
+      "css": ["overlay.css"],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ]
+}

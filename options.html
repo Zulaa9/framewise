@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <title>Frame & Speed Controller — Opciones</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <h1>🎞 Frame & Speed Controller</h1>
+
+  <section class="card">
+    <h2>Fotogramas</h2>
+    <div class="field">
+      <label for="fps">FPS global (para el paso de 1 frame, cuando el sitio no tiene FPS propio ni se detecta en vivo)</label>
+      <div class="inline">
+        <input type="number" id="fps" step="0.001" min="1" max="240" />
+        <select id="fpsPreset">
+          <option value="">Presets comunes…</option>
+          <option value="23.976">23.976 (cine/anime NTSC)</option>
+          <option value="24">24 (cine)</option>
+          <option value="25">25 (PAL)</option>
+          <option value="29.97">29.97 (NTSC)</option>
+          <option value="30">30</option>
+          <option value="50">50</option>
+          <option value="59.94">59.94</option>
+          <option value="60">60</option>
+        </select>
+      </div>
+    </div>
+    <div class="field">
+      <label for="multiFrameCount">Nº de frames para "Retroceder/Avanzar N frames"</label>
+      <input type="number" id="multiFrameCount" min="1" max="500" />
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Velocidad</h2>
+    <div class="field">
+      <label for="speedStep">Incremento cuando no hay siguiente preset (x)</label>
+      <input type="number" id="speedStep" step="0.05" min="0.01" max="2" />
+    </div>
+    <div class="field">
+      <label>Presets de velocidad (los botones rápidos del popup)</label>
+
+      <div class="preset-quick">
+        <button id="presetStepDown" title="Quita el más alto de la escala de 0.25 (ignora valores añadidos a mano)">－0.25</button>
+        <button id="presetStepUp" title="Añade el siguiente en la escala de 0.25, sin contar valores añadidos a mano">＋0.25</button>
+      </div>
+
+      <div id="presetChips" class="preset-chips"></div>
+
+      <div class="preset-add">
+        <input type="number" id="newPresetValue" step="0.05" min="0.01" max="16" placeholder="añadir a mano, ej: 1.6" />
+        <button id="addPresetBtn">＋ Añadir</button>
+      </div>
+      <button id="resetPresets" class="link-btn">Restaurar presets por defecto</button>
+    </div>
+    <div class="field checkbox">
+      <input type="checkbox" id="rememberSpeedPerDomain" />
+      <label for="rememberSpeedPerDomain">Recordar la última velocidad usada en cada sitio y aplicarla al cargar un vídeo nuevo</label>
+    </div>
+    <div class="field checkbox">
+      <input type="checkbox" id="wheelSpeedControl" />
+      <label for="wheelSpeedControl">Cambiar velocidad con la rueda del ratón al pasar por encima del vídeo</label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Reproducción</h2>
+    <div class="field">
+      <label for="seekSeconds">Segundos para "Retroceder/Avanzar N segundos"</label>
+      <input type="number" id="seekSeconds" min="1" max="120" />
+    </div>
+    <div class="field checkbox">
+      <input type="checkbox" id="showOverlay" />
+      <label for="showOverlay">Mostrar aviso en pantalla al usar un atajo (incluye pausa/reanudación con timestamp)</label>
+    </div>
+    <div class="field checkbox">
+      <input type="checkbox" id="frameStepAudio" />
+      <label for="frameStepAudio">
+        Reproducir sonido real al pasar frame a frame (reproduce brevemente el vídeo en vez de saltar en silencio;
+        al avanzar es exacto, al retroceder se oye un "tic" de confirmación porque los navegadores no soportan audio en reversa)
+      </label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Atajos de teclado</h2>
+    <p class="hint">
+      Los atajos son <strong>globales</strong> por defecto (se aplican en todas las páginas). Si un sitio ya usa esa
+      misma tecla para otra cosa, cambia el ámbito abajo a ese dominio y define un atajo distinto (o bórralo) solo para él —
+      el override de dominio siempre gana sobre el global.
+    </p>
+
+    <div class="scope-bar">
+      <label for="scopeSelect">Ámbito:</label>
+      <select id="scopeSelect"></select>
+      <input type="text" id="newDomainInput" placeholder="ej: www.crunchyroll.com" />
+      <button id="addDomainBtn">＋ Añadir dominio</button>
+      <button id="removeDomainBtn" class="danger hidden">Eliminar este dominio</button>
+    </div>
+
+    <div id="shortcutList"></div>
+  </section>
+
+  <section class="card">
+    <h2>Copia de seguridad</h2>
+    <div class="field inline">
+      <button id="exportBtn" class="link-btn-solid">⬇ Exportar configuración</button>
+      <label class="link-btn-solid file-label">
+        ⬆ Importar configuración
+        <input type="file" id="importFile" accept="application/json" hidden />
+      </label>
+    </div>
+    <p class="hint">Incluye atajos globales, overrides por dominio, presets de velocidad y FPS fijados por sitio.</p>
+  </section>
+
+  <section class="card">
+    <h2>Restablecer</h2>
+    <p class="hint">
+      Borra todos los atajos personalizados, overrides por dominio, presets de velocidad y demás ajustes,
+      dejándolo todo como recién instalado. Esta acción no se puede deshacer — pulsa el botón dos veces para confirmar.
+    </p>
+    <button id="resetAllBtn" class="danger-btn">♻ Restaurar todo a valores por defecto</button>
+  </section>
+
+  <div class="actions">
+    <button id="save" class="primary">Guardar cambios</button>
+    <span id="savedMsg" class="saved-msg hidden">✔ Guardado</span>
+  </div>
+
+  <script src="settings.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
