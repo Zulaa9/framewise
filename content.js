@@ -32,9 +32,53 @@
   function initVideo(v) {
     if (v.__fscInit) return;
     v.__fscInit = true;
+    v.__fscCapabilities = { pip: false, screenshot: false, frameAudio: false };
+    v.__fscLoopBroken = false;
+    v.__fscManualLoop = false;
+    v.loop = false; // por si el sitio lo trae activado de fábrica; el bucle lo gestionamos nosotros
     applyDomainSpeed(v);
+    applyDomainVolume(v);
     attachFpsDetection(v);
+    detectCapabilities(v);
+    // El "tainted" del canvas (DRM) y la disponibilidad de PiP a veces no se saben hasta que hay
+    // datos decodificados de verdad, así que se vuelve a comprobar cuando el vídeo ya tiene un frame.
+    v.addEventListener("loadeddata", () => detectCapabilities(v));
+    // Avisa al background de en qué frame de la pestaña está este vídeo — así el popup puede
+    // dirigirse directamente a este frame en vez de arriesgarse a que responda antes uno sin vídeo
+    // (relevante cuando el reproductor real vive dentro de un iframe).
+    chrome.runtime.sendMessage({ type: "videoFound" }, () => void chrome.runtime.lastError);
   }
+
+  // Comprueba, una vez por vídeo, qué funciones son técnicamente posibles aquí (no cambia con el
+  // tiempo, a diferencia del bucle o el retroceso más allá del buffer, que solo se sabe al probar).
+  function detectCapabilities(v) {
+    const caps = v.__fscCapabilities;
+
+    caps.frameAudio = typeof v.requestVideoFrameCallback === "function";
+    caps.pip = !!(document.pictureInPictureEnabled && !v.disablePictureInPicture);
+
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 2;
+      canvas.height = 2;
+      canvas.getContext("2d").drawImage(v, 0, 0, 2, 2);
+      canvas.toDataURL(); // lanza SecurityError si el frame es "tainted" (típico en vídeo con DRM)
+      caps.screenshot = true;
+    } catch (err) {
+      caps.screenshot = false;
+    }
+  }
+
+  // En SPAs como YouTube, al pasar al siguiente vídeo de una lista se recrea (o reemplaza) el
+  // <video> sin recargar la página. Si nada dispara activeVideo() justo en ese momento (el usuario
+  // no toca nada), ese vídeo nuevo nunca se registra. Este observer detecta el cambio por sí solo,
+  // sin depender de que el usuario interactúe.
+  function scanForNewVideos() {
+    document.querySelectorAll("video").forEach((v) => {
+      if (!v.__fscInit) initVideo(v);
+    });
+  }
+  new MutationObserver(scanForNewVideos).observe(document.documentElement, { childList: true, subtree: true });
 
   // ---------- Velocidad recordada por dominio ----------
   function applyDomainSpeed(v) {
@@ -47,6 +91,93 @@
     if (!settings || !settings.rememberSpeedPerDomain) return;
     settings.domainSpeeds[domain] = speed;
     saveSettings({ domainSpeeds: settings.domainSpeeds });
+  }
+
+  // ---------- Volumen de la extensión (independiente del volumen propio del reproductor) ----------
+  // IMPORTANTE: esto NO es lo mismo que el volumen nativo del <video> (el que controla el slider
+  // del propio sitio) — son dos cosas distintas y no se sincronizan entre sí a propósito. El
+  // volumen de la extensión es una capa de GANANCIA aparte, aplicada POR ENCIMA de lo que sea que
+  // tenga puesto el reproductor: 100% aquí significa "no toco nada", y el resto es un multiplicador
+  // independiente (0% = silencio propio, 300% = el triple de fuerte que lo que ya suene el sitio).
+  // Nunca se lee ni se escribe video.volume — así, mover el volumen del propio reproductor no
+  // afecta a lo que muestra la extensión, y viceversa.
+  function ensureAudioGraph(video) {
+    if (video.__fscGain) return video.__fscGain;
+    if (video.__fscAudioUnavailable) return null;
+    try {
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      const ctx = new Ctx();
+      const source = ctx.createMediaElementSource(video);
+      const gain = ctx.createGain();
+      source.connect(gain).connect(ctx.destination);
+      video.__fscAudioCtx = ctx;
+      video.__fscGain = gain;
+      return gain;
+    } catch (err) {
+      // Puede fallar en vídeo de origen cruzado sin cabeceras CORS (Web Audio API lo silencia por
+      // seguridad) o si el navegador no soporta AudioContext.
+      video.__fscAudioUnavailable = true;
+      return null;
+    }
+  }
+
+  function currentVolumePercent(video) {
+    // Sin grafo propio todavía = no hemos tocado nada = 100% (neutro), sea cual sea el volumen
+    // real del reproductor en ese momento.
+    if (video.__fscGain) return Math.round(video.__fscGain.gain.value * 100);
+    return 100;
+  }
+
+  function setVolume(video, percent, opts) {
+    const silent = opts && opts.silent;
+    const max = (settings && settings.volumeMax) || 300;
+    percent = Math.max(0, Math.min(max, Math.round(percent)));
+
+    if (percent === 100) {
+      // Neutro: si había un grafo activo de una ganancia previa, se dispone en 1x (no lo
+      // destruimos — recrearlo tiene coste y no molesta dejarlo enrutado sin alterar nada).
+      if (video.__fscGain) video.__fscGain.gain.value = 1;
+    } else {
+      const gain = ensureAudioGraph(video);
+      if (!gain) {
+        if (!silent) showOverlay("⚠ El volumen de la extensión no está disponible en este vídeo");
+        return;
+      }
+      if (video.__fscAudioCtx && video.__fscAudioCtx.state === "suspended") {
+        video.__fscAudioCtx.resume().catch(() => {});
+      }
+      gain.gain.value = percent / 100;
+    }
+
+    if (!silent) {
+      showOverlay(`🔊 Volumen (extensión): ${percent}%`);
+      persistDomainVolume(percent);
+    }
+  }
+
+  function volumeStep(video, dir) {
+    const max = (settings && settings.volumeMax) || 300;
+    const step = (settings && settings.volumeStep) || 10;
+    const next = Math.max(0, Math.min(max, currentVolumePercent(video) + dir * step));
+    setVolume(video, next);
+  }
+
+  function applyDomainVolume(v) {
+    if (!settings || !settings.rememberVolumePerDomain) return;
+    const remembered = settings.domainVolumes[domain];
+    if (remembered == null) return;
+    // Solo se restaura solo si es el valor neutro (100% = no requiere crear ningún grafo de
+    // audio). Cualquier otro valor necesitaría construir el grafo de Web Audio antes de que haya
+    // habido un gesto de usuario en la página, lo que podría silenciar el vídeo por completo
+    // (política de autoplay del navegador) — se recupera en cuanto el usuario ajuste el volumen
+    // de la extensión una vez.
+    if (remembered === 100) setVolume(v, remembered, { silent: true });
+  }
+
+  function persistDomainVolume(percent) {
+    if (!settings || !settings.rememberVolumePerDomain) return;
+    settings.domainVolumes[domain] = percent;
+    saveSettings({ domainVolumes: settings.domainVolumes });
   }
 
   // ---------- Auto-detección de FPS ----------
@@ -312,9 +443,39 @@
     }
   }
 
+  // IMPORTANTE: no usamos el `video.loop` nativo. Cuando el navegador lo gestiona internamente,
+  // el salto a currentTime=0 al llegar al final NO pasa por nuestro código — así que ninguna de
+  // las protecciones de seekWithGuard (esperar, revertir si falla) se aplica, y si el principio ya
+  // no está cargado (típico tras ver un rato en streaming adaptativo), el navegador se queda
+  // colgado de verdad, sin recuperación posible. Por eso implementamos el bucle "a mano": dejamos
+  // video.loop siempre en false, escuchamos el evento nativo "ended" (que así sí llega a
+  // dispararse) y hacemos nosotros el salto a 0 con seekWithGuard, con las mismas garantías que el
+  // resto de saltos de la extensión.
+  document.addEventListener(
+    "ended",
+    async (e) => {
+      const v = e.target;
+      if (v.tagName !== "VIDEO" || !v.__fscManualLoop) return;
+      suppressGenericOverlayUntil = Date.now() + 2000;
+      const res = await seekWithGuard(v, 0);
+      if (res.ok) {
+        v.__fscLoopBroken = false;
+        try { await v.play(); } catch (err) {}
+        suppressGenericOverlayUntil = Date.now() + 300;
+        showOverlay("🔁 Bucle: reiniciado desde el principio");
+      } else {
+        v.__fscLoopBroken = true;
+        v.__fscManualLoop = false;
+      }
+    },
+    true
+  );
+
   function toggleLoop(video) {
-    video.loop = !video.loop;
-    showOverlay(video.loop ? "🔁 Bucle activado" : "🔁 Bucle desactivado");
+    video.loop = false; // nunca dejamos que el navegador lo gestione internamente, ver nota arriba
+    video.__fscManualLoop = !video.__fscManualLoop;
+    if (video.__fscManualLoop) video.__fscLoopBroken = false;
+    showOverlay(video.__fscManualLoop ? "🔁 Bucle activado" : "🔁 Bucle desactivado");
   }
 
   function toggleMute(video) {
@@ -369,6 +530,9 @@
       case "togglePip": return togglePip(video);
       case "toggleMute": return toggleMute(video);
       case "screenshot": return screenshot(video);
+      case "volumeUp": return volumeStep(video, 1);
+      case "volumeDown": return volumeStep(video, -1);
+      case "volumeReset": return setVolume(video, 100);
     }
   }
 
@@ -478,11 +642,14 @@
     true
   );
 
-  // ---------- Rueda del ratón sobre el vídeo = velocidad ----------
+  // ---------- Ctrl + rueda del ratón sobre el vídeo = velocidad ----------
+  // Solo con Ctrl (o Cmd en Mac) pulsado, para no robarle el scroll normal de la página a sitios
+  // donde el vídeo está embebido dentro de un contenido más largo (blogs, foros, etc.).
   document.addEventListener(
     "wheel",
     (e) => {
       if (!settings || !settings.wheelSpeedControl) return;
+      if (!e.ctrlKey && !e.metaKey) return;
       const video = activeVideo();
       if (!video) return;
       const rect = video.getBoundingClientRect();
@@ -502,6 +669,16 @@
       sendResponse({ ok: false, error: "no-video" });
       return;
     }
+    if (msg.type === "getLocalVideoStatus") {
+      // Usado por background.js para decidir a qué frame dirigirse cuando hay vídeo en varios a
+      // la vez: reutiliza el mismo criterio que activeVideo() (reproduciéndose > más grande).
+      sendResponse({
+        ok: true,
+        playing: !video.paused && !video.ended && video.readyState > 2,
+        area: video.clientWidth * video.clientHeight
+      });
+      return;
+    }
     if (msg.type === "getState") {
       sendResponse({
         ok: true,
@@ -510,10 +687,14 @@
         currentTime: video.currentTime,
         duration: video.duration,
         muted: video.muted,
-        loop: video.loop,
+        loop: !!video.__fscManualLoop,
         domain,
         detectedFps: liveDetectedFps,
-        domainFps: settings.domainFps[domain] || null
+        domainFps: settings.domainFps[domain] || null,
+        capabilities: video.__fscCapabilities || { pip: true, screenshot: true, frameAudio: true },
+        loopBroken: !!video.__fscLoopBroken,
+        volume: currentVolumePercent(video),
+        volumeMax: (settings && settings.volumeMax) || 300
       });
       return;
     }
@@ -528,6 +709,11 @@
     }
     if (msg.type === "setSpeed") {
       setSpeed(video, msg.speed);
+      sendResponse({ ok: true });
+      return;
+    }
+    if (msg.type === "setVolume") {
+      setVolume(video, msg.percent);
       sendResponse({ ok: true });
       return;
     }

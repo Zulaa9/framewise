@@ -61,7 +61,29 @@
     </div>
     <div class="field checkbox">
       <input type="checkbox" id="wheelSpeedControl" />
-      <label for="wheelSpeedControl">Cambiar velocidad con la rueda del ratón al pasar por encima del vídeo</label>
+      <label for="wheelSpeedControl">Cambiar velocidad con Ctrl + rueda del ratón sobre el vídeo (sin Ctrl, el scroll de la página funciona con normalidad)</label>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Volumen de la extensión</h2>
+    <p class="hint">
+      Es una capa de volumen <strong>aparte</strong> del propio reproductor del sitio — no se sincronizan entre sí.
+      100% aquí significa "no toco nada"; el resto se aplica como un multiplicador independiente por encima de lo
+      que sea que tengas puesto en el reproductor (0% lo silencia solo desde la extensión, 300% lo triplica).
+    </p>
+    <div class="field">
+      <label for="volumeMax">Volumen máximo de la extensión (%)</label>
+      <input type="number" id="volumeMax" min="100" max="1000" step="25" />
+      <p class="hint">Amplificar mucho por encima de 100% puede distorsionar el audio si la fuente ya va alta de volumen — es una limitación del propio audio, no de la extensión.</p>
+    </div>
+    <div class="field">
+      <label for="volumeStep">Incremento por pulsación de subir/bajar volumen (%)</label>
+      <input type="number" id="volumeStep" min="1" max="100" step="5" />
+    </div>
+    <div class="field checkbox">
+      <input type="checkbox" id="rememberVolumePerDomain" />
+      <label for="rememberVolumePerDomain">Recordar el último volumen de la extensión usado en cada sitio (solo el valor neutro 100% se restaura automáticamente al cargar — cualquier otro requiere un toque manual para evitar quedarse en silencio)</label>
     </div>
   </section>
 

@@ -10,6 +10,9 @@ const SYNC_DEFAULTS = {
   frameStepAudio: true,
   wheelSpeedControl: true,
   rememberSpeedPerDomain: true,
+  volumeMax: 300, // % máximo (100 = volumen normal del navegador; por encima se amplifica con Web Audio API)
+  volumeStep: 10,
+  rememberVolumePerDomain: true,
   speedPresets: [0.1, 0.25, 0.5, 0.75, 1, 1.25, 1.5, 1.75, 2, 2.25, 2.5, 2.75, 3, 3.25, 3.5, 3.75, 4],
   actions: {
     frameBack:         { label: "Retroceder 1 frame",                shortcut: ",", repeatable: true },
@@ -25,7 +28,10 @@ const SYNC_DEFAULTS = {
     toggleLoop:         { label: "Activar/desactivar bucle",           shortcut: "", repeatable: false },
     togglePip:          { label: "Picture-in-Picture",                 shortcut: "", repeatable: false },
     toggleMute:         { label: "Silenciar / Activar audio",          shortcut: "", repeatable: false },
-    screenshot:         { label: "Capturar frame actual (PNG)",        shortcut: "", repeatable: false }
+    screenshot:         { label: "Capturar frame actual (PNG)",        shortcut: "", repeatable: false },
+    volumeUp:           { label: "Subir volumen",                      shortcut: "", repeatable: true },
+    volumeDown:         { label: "Bajar volumen",                      shortcut: "", repeatable: true },
+    volumeReset:        { label: "Volumen normal (100%)",              shortcut: "", repeatable: false }
   },
   // hostname -> { actionId: "shortcutString" }  (override total o parcial de settings.actions[*].shortcut)
   domainOverrides: {}
@@ -37,7 +43,9 @@ const LOCAL_DEFAULTS = {
   // hostname -> última velocidad usada en ese sitio
   domainSpeeds: {},
   // hostname -> fps confirmado manualmente por el usuario para ese sitio (prioridad sobre la detección automática)
-  domainFps: {}
+  domainFps: {},
+  // hostname -> último volumen usado en ese sitio, en % (puede superar 100)
+  domainVolumes: {}
 };
 
 const DEFAULT_SETTINGS = { ...SYNC_DEFAULTS, ...LOCAL_DEFAULTS };
@@ -51,6 +59,7 @@ function loadSettings(cb) {
       merged.domainOverrides = { ...(syncStored.domainOverrides || {}) };
       merged.domainSpeeds = { ...(localStored.domainSpeeds || {}) };
       merged.domainFps = { ...(localStored.domainFps || {}) };
+      merged.domainVolumes = { ...(localStored.domainVolumes || {}) };
       cb(merged);
     });
   });

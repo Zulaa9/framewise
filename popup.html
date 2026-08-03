@@ -8,7 +8,11 @@
 <body>
   <header>
     <span class="title">🎞 Frame & Speed Controller</span>
-    <button id="openOptions" title="Configurar atajos">⚙</button>
+    <span class="header-actions">
+      <button id="floatBtn" class="hidden" title="Superponer: flota por encima de todo, incluida la pestaña del vídeo">📌</button>
+      <button id="detachBtn" title="Abrir en ventana aparte (se queda abierta hagas clic donde hagas clic)">🗗</button>
+      <button id="openOptions" title="Configurar atajos">⚙</button>
+    </span>
   </header>
 
   <div id="noVideo" class="hint hidden">No se encontró vídeo en esta pestaña.</div>
@@ -45,6 +49,17 @@
       <button id="speedUp">+</button>
     </div>
     <div id="speedPresets" class="presets"></div>
+
+    <div class="section-label">Volumen de la extensión <span class="muted" id="volumeMaxHint">(hasta 300% · independiente del volumen del reproductor)</span></div>
+    <div class="row slider-row">
+      <button id="volumeDown">−</button>
+      <input type="range" id="volumeSlider" min="0" max="300" step="5" value="100" />
+      <button id="volumeUp">+</button>
+    </div>
+    <div class="row volume-row">
+      <span id="volumeBadge">100%</span>
+      <button id="volumeReset" title="Volumen normal (100%)">100%</button>
+    </div>
 
     <div class="section-label">FPS de este sitio</div>
     <div class="row fps-row">

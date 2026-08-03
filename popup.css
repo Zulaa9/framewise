@@ -15,6 +15,7 @@ header {
   border-bottom: 1px solid #2a2a2e;
 }
 header .title { font-weight: 700; font-size: 13px; }
+.header-actions { display: flex; gap: 2px; }
 header button {
   background: none;
   border: none;
@@ -53,6 +54,18 @@ header button:hover { background: #2a2a2e; }
   font-weight: 700;
 }
 .buttons-row button.active:hover { background: #9bd5ff; }
+.buttons-row button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+  background: #2a2a2e;
+  color: #888;
+}
+.buttons-row button:disabled:hover { background: #2a2a2e; }
+.buttons-row button.warn {
+  border-color: #7a5a20;
+  color: #ffcb7a;
+}
+.buttons-row button.warn:hover { background: #3a2e18; }
 
 .section-label {
   margin: 10px 0 4px;
@@ -115,6 +128,23 @@ footer {
 }
 footer a { color: #7cc7ff; text-decoration: none; }
 footer a:hover { text-decoration: underline; }
+
+.volume-row {
+  justify-content: space-between;
+  font-size: 12px;
+  color: #bdbdbd;
+}
+#volumeBadge { font-weight: 700; color: #7cffa0; }
+.volume-row button {
+  background: #2a2a2e;
+  border: 1px solid #3a3a3f;
+  color: #ddd;
+  border-radius: 6px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 11px;
+}
+.volume-row button:hover { background: #35353b; }
 
 .fps-row {
   justify-content: space-between;

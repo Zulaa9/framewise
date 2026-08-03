@@ -13,6 +13,9 @@ function populateForm() {
   q("frameStepAudio").checked = settings.frameStepAudio;
   q("rememberSpeedPerDomain").checked = settings.rememberSpeedPerDomain;
   q("wheelSpeedControl").checked = settings.wheelSpeedControl;
+  q("volumeMax").value = settings.volumeMax;
+  q("volumeStep").value = settings.volumeStep;
+  q("rememberVolumePerDomain").checked = settings.rememberVolumePerDomain;
   renderPresetChips();
   renderScopeSelect();
   renderShortcuts();
@@ -290,6 +293,9 @@ function collectFormIntoSettings() {
   settings.frameStepAudio = q("frameStepAudio").checked;
   settings.rememberSpeedPerDomain = q("rememberSpeedPerDomain").checked;
   settings.wheelSpeedControl = q("wheelSpeedControl").checked;
+  settings.volumeMax = parseInt(q("volumeMax").value, 10) || DEFAULT_SETTINGS.volumeMax;
+  settings.volumeStep = parseInt(q("volumeStep").value, 10) || DEFAULT_SETTINGS.volumeStep;
+  settings.rememberVolumePerDomain = q("rememberVolumePerDomain").checked;
   settings.speedPresets = settings.speedPresets.slice().sort((a, b) => a - b);
   if (settings.speedPresets.length === 0) settings.speedPresets = DEFAULT_SETTINGS.speedPresets.slice();
 }
