@@ -203,7 +203,7 @@ async function floatWindow() {
   const hostWindow = await chrome.windows.getCurrent();
   const pipWindow = await documentPictureInPicture.requestWindow({ width: 340, height: 700 });
 
-  pipWindow.document.title = "Frame & Speed Controller";
+  pipWindow.document.title = "Framewise";
   // Un iframe con height:100% necesita que TODA la cadena de ancestros (html y body) tenga una
   // altura explícita — si no, "100%" no tiene de qué partir y el iframe colapsa a su alto por
   // defecto (~150px), recortando el contenido y añadiendo scroll.

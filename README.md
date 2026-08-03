@@ -1,105 +1,130 @@
-# Frame & Speed Controller
+# Framewise
 
-Extensión de navegador (Chrome / Edge, Manifest V3) para controlar cualquier `<video>` HTML5 con precisión de fotograma: avanzar/retroceder frame a frame, controlar la velocidad de reproducción con presets configurables, y definir tus propios atajos de teclado — globales o específicos por sitio web.
+Framewise is a Manifest V3 browser extension (Chrome / Edge) for controlling any HTML5 `<video>` with frame-level precision: step forward/backward frame by frame, adjust playback speed, amplify volume beyond the browser's native limit, and define fully custom keyboard shortcuts — globally or per website.
 
-Nació para resolver un caso concreto (Crunchyroll no expone forma de ir frame a frame en su reproductor), pero funciona sobre cualquier página con un elemento `<video>` estándar.
+A product overview, screenshots and the Chrome Web Store listing live at **framewise.zula.dev**. This document covers installation, usage, configuration and the internals for anyone building or contributing to the extension.
 
-## Características
+## Overview
 
-### Control de fotogramas
-- **Avanzar / retroceder 1 frame** con audio real: al avanzar, reproduce ese fotograma de verdad (no salta en silencio), así que se oye exactamente igual que una reproducción normal.
-- **Mantener pulsada la tecla de avanzar** entra en reproducción continua real (como pulsar play) en vez de encadenar saltos discretos — al soltar, pausa y encaja automáticamente en el fotograma exacto más cercano.
-- **Retroceder** incluye un "tic" de audio de confirmación (los navegadores no permiten reproducción con audio en reversa, es una limitación de la plataforma web, no de la extensión).
-- Salto de **N frames** configurable (por defecto 5), con atajo propio.
-- **FPS detectado automáticamente** en vivo (via `requestVideoFrameCallback`) para que el paso de frame sea preciso sin tener que configurarlo a mano; también se puede fijar un FPS manual, global o por dominio.
-- Protección anti-bloqueo: si intentas retroceder más allá de lo que el sitio tiene cargado (típico en streaming con DRM), la extensión lo detecta, avisa en pantalla y **nunca deja el reproductor colgado** — vuelve automáticamente a la última posición válida.
+Framewise started as a fix for one specific gap — Crunchyroll's player has no way to step through video frame by frame — and grew into a general-purpose toolkit for precise HTML5 video control that works on virtually any site (YouTube, Crunchyroll, Twitch, Vimeo, and any page using a standard `<video>` element).
 
-### Velocidad de reproducción
-- Presets de velocidad totalmente configurables (por defecto de 0.1x a 4x en pasos de 0.25).
-- Popup con slider **escalonado** (solo se detiene en presets reales, sin valores "muertos" intermedios) hasta 2x, y botones de preset para el resto.
-- `Ctrl` + rueda del ratón sobre el vídeo para subir/bajar de preset en preset (activable/desactivable; sin Ctrl el scroll de la página funciona normal).
-- Recuerda la última velocidad usada en cada dominio y la aplica sola al cargar un vídeo nuevo.
-- Badge en el icono de la barra de herramientas mostrando la velocidad activa.
+It has no build step and no external dependencies: plain JavaScript, loaded directly via `content_scripts` and standard `<script>` tags.
 
-### Volumen de la extensión
-- Capa de volumen **independiente del propio reproductor del sitio** — no se sincronizan entre sí. 100% significa "no toco nada"; el resto es un multiplicador aparte por encima de lo que sea que tengas puesto en el reproductor, desde 0% hasta un máximo configurable (300% por defecto), usando amplificación real con la Web Audio API (`GainNode`) para superar el límite nativo del `<video>`.
-- Slider y botones +/- en el popup, con reset rápido a 100%.
-- Recuerda el último volumen de extensión usado por dominio (la restauración automática al cargar solo aplica al valor neutro 100%; cualquier otro requiere un toque manual, para evitar que el vídeo se quede en silencio por las políticas de autoplay del navegador).
-- Si el vídeo es de origen cruzado sin cabeceras CORS, este ajuste no es posible (limitación del navegador) — la extensión lo detecta y avisa en vez de fallar en silencio.
+## Features
 
-### Atajos de teclado configurables
-- Todas las acciones tienen un atajo por defecto, pero se pueden reasignar libremente desde la página de Opciones (clic en "Grabar" y pulsar la combinación deseada).
-- **Atajos por dominio**: además del atajo global, se puede definir un atajo distinto (o desactivarlo) para un sitio concreto — útil si esa web ya usa esa misma tecla para otra cosa. El override de dominio siempre gana sobre el global.
+### Frame-by-frame navigation
+- Step one frame forward or backward, with real audio on the forward step (the video is briefly played and paused exactly on the target frame via `requestVideoFrameCallback`, instead of silently jumping).
+- Holding the forward key switches to real continuous playback instead of chaining discrete jumps, snapping back to the exact nearest frame on release.
+- Configurable multi-frame jumps, with their own shortcut.
+- Live FPS detection (`requestVideoFrameCallback`), with a manual override available globally or per domain.
+- Stall-safe seeking: if a jump requests a moment the site hasn't buffered (common with adaptive/DRM streaming), Framewise waits, and if it doesn't resolve, reverts to the last known-good position instead of leaving playback stuck.
 
-### Otras utilidades
-- Play/pausa, silenciar, Picture-in-Picture.
-- **Bucle** implementado a mano (no con el atributo `loop` nativo, que puede colgar el reproductor si el navegador intenta saltar solo a un tramo ya no cargado): usa el mismo mecanismo seguro que el retroceso, así que si falla, avisa en vez de romper la reproducción.
-- Capturar el fotograma actual como PNG.
-- **Detección de capacidades por vídeo**: Picture-in-Picture y la captura de frame se deshabilitan automáticamente en el popup si no son técnicamente posibles en ese vídeo concreto (p. ej. captura bloqueada por DRM), en vez de dejar que falles al intentarlo.
-- Overlay en pantalla que confirma cada acción (activable/desactivable), incluyendo pausa/reanudación con timestamp exacto — funciona también si pausas con los controles nativos del propio sitio, no solo con la extensión.
-- Tiempo de reproducción sincronizado en vivo en el popup mientras lo tienes abierto, sin necesidad de interactuar.
-- Exportar/importar toda la configuración como JSON (atajos, presets, overrides por dominio).
-- Botón de "restaurar todo a valores por defecto" con doble confirmación para evitar borrados accidentales.
-- Botón 🗗 para abrir el panel en una ventana aparte que se queda abierta hagas clic donde hagas clic (el popup normal de cualquier extensión se cierra al perder el foco — eso no se puede evitar, pero sí abrir una ventanita independiente en su lugar).
-- Botón 📌 (dentro de la ventana aparte) para convertirla en una ventana **flotante de verdad**, superpuesta por encima de todo incluso al cambiar de pestaña, usando la Document Picture-in-Picture API (Chrome/Edge 116+). La ventana original se minimiza automáticamente y se restaura sola al cerrar la flotante.
+### Playback speed
+- Fully configurable speed presets (0.1×–4× by default, in 0.25 steps).
+- Stepped popup slider — it can only land on a real preset, never an arbitrary in-between value — plus quick preset buttons for anything beyond the slider's range.
+- `Ctrl` + mouse wheel over the video to move preset to preset (scrolling the page itself is left untouched without `Ctrl`).
+- Remembers the last speed used per domain and re-applies it automatically.
+- Toolbar badge showing the active speed.
 
-### Detección de vídeo robusta
-- Funciona aunque el reproductor esté dentro de un **iframe**, y también si hay **varios vídeos reproduciéndose a la vez en frames distintos** — se dirige siempre al que esté activo (o al de mayor tamaño visible si ninguno se reproduce).
-- Detecta vídeos nuevos automáticamente en páginas de una sola página (SPA) como YouTube, incluso al pasar al siguiente vídeo de una lista de reproducción sin recargar la página.
-- Reintentos automáticos si el popup se abre justo cuando la página todavía está cargando.
-- **Reinyección automática de content scripts huérfanos**: al recargar/actualizar la extensión, las pestañas que ya estaban abiertas se quedan con una copia del script desconectada de la extensión (limitación de Chrome, no arreglable desde dentro de esa copia). El `background.js` hace ping a cada pestaña abierta al arrancar y reinyecta una copia nueva donde haga falta, sin que el usuario tenga que recargar la página — con protección para que la copia vieja se autodestruya y no queden dos instancias duplicando acciones.
-- Si aun así la detección automática falla, el popup ofrece tres redes de seguridad cuando no encuentra vídeo: **🔄 Buscar de nuevo**, **↻ Recargar la pestaña y reintentar**, y **🎯 Marcar vídeo manualmente** (selecciona con el ratón el vídeo exacto a controlar, al estilo "inspeccionar elemento" de las herramientas de desarrollador — la opción más fiable cuando todo lo demás falla).
+### Volume amplification
+- An **independent** volume layer, on top of whatever the site's own player volume is set to — the two are intentionally not linked. Framewise's volume never reads or writes the native `video.volume` property.
+- 100% means "untouched"; anything else is a separate multiplier (0–300% by default, configurable) applied through a Web Audio `GainNode`, which is the only way to exceed the browser's native 0–100% ceiling.
+- Per-domain memory, with one safety rule: only the neutral 100% value is restored automatically on page load. Any other value requires one manual interaction first, because building the audio graph before a user gesture can leave the browser's autoplay policy muting the tab entirely.
+- Not available on cross-origin video without CORS headers (a Web Audio API restriction, not something Framewise can bypass); the extension detects this and disables the control instead of failing silently.
 
-## Instalación (modo desarrollador)
+### Keyboard shortcuts
+- Every action has a default shortcut, fully reassignable from the Options page.
+- Per-domain overrides: define a different shortcut (or disable one) for a specific site without touching the global default — useful when a site already uses the same key for something else. A domain override always wins over the global shortcut.
 
-1. Clona o descarga este repositorio.
-2. Abre `chrome://extensions` (o `edge://extensions` en Edge).
-3. Activa **"Modo de desarrollador"** (arriba a la derecha).
-4. Clic en **"Cargar descomprimida"** y selecciona la carpeta del proyecto.
-5. Listo — el icono aparecerá en la barra de herramientas.
+### Reliable video detection
+- Works even when the player lives inside an iframe, and when multiple videos are playing simultaneously across different frames — Framewise always targets whichever is actually playing (or the largest visible one if none are).
+- Detects new videos automatically on single-page apps like YouTube, including when the player is replaced on playlist auto-advance without a full page reload.
+- Self-healing content scripts: reloading or updating the extension can leave already-open tabs with an orphaned, disconnected copy of the script. The background service worker pings every open tab on startup and silently re-injects a fresh copy wherever needed, with a safe hand-off protocol so two copies never end up double-handling the same action.
+- Three fallbacks when a video still isn't found: retry detection, reload the tab and retry, or manually pick the video by clicking directly on it (similar to a DevTools element picker) — the most reliable option regardless of the underlying cause.
 
-## Uso
+### Other utilities
+- Play/pause, mute, Picture-in-Picture.
+- Loop, re-implemented manually (not via the native `loop` attribute, which can hang playback if the browser tries to seek back to a portion of the stream that's no longer buffered) — it uses the same stall-safe mechanism as frame stepping and reports a clear warning if it fails instead of breaking playback.
+- Frame capture to PNG (disabled automatically when the source video is DRM-protected and the browser blocks canvas access).
+- On-screen overlay confirming each action, including pause/resume with an exact timestamp — this also fires when pausing with the site's own native controls, not only through Framewise.
+- Detachable popup window that stays open regardless of where you click, and an optional true always-on-top floating mode (Document Picture-in-Picture, Chrome/Edge 116+).
+- Configuration export/import as JSON, and a "reset everything" action with a two-step confirmation.
 
-- Abre cualquier página con un vídeo reproduciéndose y usa los atajos por defecto:
+## Installation
 
-| Acción | Atajo por defecto |
-|---|---|
-| Retroceder 1 frame | `,` |
-| Avanzar 1 frame | `.` |
-| Subir velocidad (siguiente preset) | `]` |
-| Bajar velocidad (preset anterior) | `[` |
-| Velocidad normal (1x) | `\` |
-| Play / Pausa | `k` |
-| Retroceder N segundos | `j` |
-| Avanzar N segundos | `l` |
+### Chrome Web Store
+Coming soon.
 
-- Clic en el icono de la extensión para el panel rápido (velocidad, frame a frame, play/pausa, capturas, etc.).
-- Clic en el engranaje ⚙ (o "Atajos de este sitio" desde el popup) para configurar atajos, presets, FPS y overrides por dominio.
+### Developer mode
+1. Clone this repository.
+2. Open `chrome://extensions`.
+3. Enable **Developer mode**.
+4. Click **Load unpacked** and select the project folder.
 
-## Estructura del proyecto
+## Usage
 
-```
-manifest.json     Manifest V3
-settings.js       Configuración por defecto y utilidades compartidas
-content.js        Lógica principal: control del <video>, atajos, overlay, detección de FPS
-background.js     Service worker: badge del icono y resolución de en qué frame de la pestaña está el vídeo
-popup.html/js/css Panel rápido de la barra de herramientas
-options.html/js/css  Página de configuración completa
-overlay.css       Estilos del aviso en pantalla
-icons/            Iconos del toolbar (16/48/128px)
-```
+Open any page with a video playing and use the default shortcuts:
 
-La configuración se guarda en `chrome.storage.sync` (atajos, presets, overrides por dominio — viaja contigo entre equipos) y `chrome.storage.local` (velocidad/FPS recordados por dominio — no tiene sentido sincronizarlos y evita agotar la cuota de `sync`).
+| Action | Default shortcut |
+| --- | --- |
+| Previous frame | `,` |
+| Next frame | `.` |
+| Increase speed (next preset) | `]` |
+| Decrease speed (previous preset) | `[` |
+| Reset speed to 1× | `\` |
+| Play / Pause | `k` |
+| Seek backward | `j` |
+| Seek forward | `l` |
 
-## Limitaciones conocidas
+Volume, loop, mute, Picture-in-Picture, screenshot and multi-frame jumps have no shortcut bound by default — assign them from Options if you want quick keyboard access.
 
-- **Retroceder más allá de lo cargado por el propio reproductor del sitio** no siempre es posible: en streaming con DRM (Widevine, etc.), el `<video>` no puede descargar contenido por su cuenta — solo el JavaScript propio de cada sitio decide qué cargar y cuándo. La extensión detecta esta situación y te avisa sin romper la reproducción, pero no puede forzar la carga de un tramo que el sitio no quiere servir.
-- El sonido en retroceso frame a frame es un "tic" aproximado, no audio real en reversa (no soportado por los navegadores).
-- La captura de fotograma (PNG) puede fallar en vídeos con DRM, ya que el navegador bloquea la lectura del `<canvas>` sobre contenido protegido.
-- La amplificación de volumen por encima de 100% puede no ser posible en vídeo de origen cruzado sin cabeceras CORS (poco frecuente en streaming vía MSE como YouTube/Crunchyroll).
-- La ventana flotante (📌) requiere Chrome/Edge 116+ (Document Picture-in-Picture API); en navegadores sin soporte, el botón simplemente no aparece.
-- La detección automática de vídeo, aun con las protecciones anteriores, puede fallar puntualmente en algunos sitios/casos concretos que todavía no se han identificado del todo. Si pasa, **"🎯 Marcar vídeo manualmente"** en el popup es la vía fiable — funciona siempre, independientemente de la causa del fallo automático.
+Click the toolbar icon for the quick popup (frame stepping, speed, volume, play/pause, capture, etc.), or the gear icon (or "Shortcuts for this site" from the popup) to open the full Options page.
 
-## Licencia
+## Configuration
 
-MIT — ver [LICENSE](LICENSE).
+Everything is adjustable from the Options page:
+- Keyboard shortcuts, globally or per domain, with clash detection when recording a new one.
+- Speed presets (add/remove individually, or step in 0.25 increments anchored at 0), default speed increment, and whether speed is remembered per domain.
+- Volume maximum, step size, and whether it's remembered per domain.
+- FPS: global default, or fixed per domain (overrides live detection).
+- Seek length in seconds, multi-frame jump size, on-screen overlay toggle, frame-step audio toggle.
+- Export the full configuration as JSON, import it back, or reset everything to defaults (double confirmation required).
+
+## Architecture
+
+Manifest V3, no bundler, no runtime dependencies.
+
+| File | Role |
+| --- | --- |
+| `manifest.json` | Extension manifest |
+| `settings.js` | Default settings and shared utilities (loaded by content, popup and options scripts) |
+| `content.js` | Core logic — runs once per frame of every page: video control, shortcuts, overlay, FPS/capability detection |
+| `background.js` | Service worker — toolbar badge, cross-frame video resolution, orphaned content-script recovery |
+| `popup.html/js/css` | Toolbar popup |
+| `options.html/js/css` | Options page |
+| `overlay.css` | On-screen confirmation overlay and manual video-picker banner |
+| `icons/` | Toolbar icons (16/48/128px) |
+
+**Core components:**
+- **Background service worker.** Tracks, per tab, which frame(s) currently hold a video (needed because the player can live inside an iframe, or several can play at once across frames); resolves which one is "active" the same way a single frame would (playing > largest visible). Also owns the self-healing mechanism: on startup it pings every open tab, and re-injects `content.js` via `chrome.scripting` wherever no live script responds.
+- **Content script.** One instance per frame. Each instance announces itself on load and any previous instance in the same document tears itself down cleanly (listeners removed, observers disconnected) — this is what makes re-injection safe without risking two copies acting on the same keypress. It owns frame stepping, speed, the independent volume layer, the manual loop implementation, capability detection, and the manual video picker.
+- **Popup / Options pages.** Communicate with the content script via `chrome.runtime` messaging, resolving the correct target frame through the background worker, with automatic retries to cover the brief window right after a page loads.
+
+**Storage.** Settings are split across two storage areas on purpose: `chrome.storage.sync` holds shortcuts, presets and per-domain shortcut overrides (small, and worth carrying across the user's devices), while `chrome.storage.local` holds per-domain remembered speed/volume/FPS (these grow with every site visited and would otherwise risk hitting `sync`'s much smaller quota).
+
+## Known Limitations
+
+- **Seeking beyond what the site has buffered isn't always possible.** With DRM-protected streaming (Widevine, etc.), the `<video>` element can't fetch content on its own — only the site's own JavaScript decides what to load and when. Framewise detects this and reverts safely instead of hanging, but it cannot force a site to load a segment it doesn't want to serve.
+- Audio on the backward frame step is an approximate confirmation tick, not true reverse playback (browsers don't support real reverse audio).
+- PNG frame capture can fail on DRM-protected video, since the browser blocks reading `<canvas>` content from protected sources.
+- Volume amplification above 100% may be unavailable on cross-origin video without CORS headers.
+- The floating window mode requires Chrome/Edge 116+ (Document Picture-in-Picture API); the button simply doesn't appear on unsupported browsers.
+- Automatic video detection, despite the safeguards above, can still occasionally miss on specific sites or edge cases that haven't been fully characterized yet. The manual video picker is the reliable fallback — it works regardless of the underlying cause.
+
+## Contributing
+
+Bug reports, feature requests and pull requests are welcome — open an issue to discuss anything non-trivial before submitting a PR.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
