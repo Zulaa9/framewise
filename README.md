@@ -2,7 +2,7 @@
 
 Framewise is a Manifest V3 browser extension (Chrome / Edge) for controlling any HTML5 `<video>` with frame-level precision: step forward/backward frame by frame, adjust playback speed, amplify volume beyond the browser's native limit, and define fully custom keyboard shortcuts — globally or per website.
 
-A product overview, screenshots and the Chrome Web Store listing live at **framewise.zula.dev**. This document covers installation, usage, configuration and the internals for anyone building or contributing to the extension.
+**[framewise.zula.dev](https://framewise.zula.dev)** is the official product site — demos, screenshots and the Chrome Web Store listing live there. This document covers installation, usage, configuration and the internals for anyone building or contributing to the extension.
 
 ## Overview
 
