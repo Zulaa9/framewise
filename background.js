@@ -1,6 +1,6 @@
-// Service worker: badge del icono (velocidad actual por pestaña) y resolución de a qué frame de
-// la pestaña dirigirse cuando hay vídeo en más de un frame (p.ej. el reproductor principal en un
-// iframe, o varios reproductores/embeds simultáneos en frames distintos).
+// Service worker: badge del icono (velocidad actual por pestaña), resolución de a qué frame de la
+// pestaña dirigirse cuando hay vídeo en más de un frame, y reinyección automática de content
+// scripts huérfanos (ver reinjectOrphanedContentScripts más abajo).
 const tabVideoFrames = new Map(); // tabId -> Set<frameId> (frames que en algún momento tuvieron vídeo)
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
@@ -22,6 +22,19 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "getVideoFrame" && typeof msg.tabId === "number") {
     resolveBestFrame(msg.tabId).then((frameId) => sendResponse({ frameId }));
     return true; // respuesta asíncrona
+  }
+
+  // El popup pidió buscar el vídeo "a mano" (clic directo sobre él); una vez elegido en un frame,
+  // avisamos a TODOS los frames de esa pestaña para que cualquier otro que siguiera en modo de
+  // selección se cancele solo.
+  if (msg.type === "videoPickerDone" && sender.tab) {
+    chrome.tabs.sendMessage(sender.tab.id, { type: "cancelVideoPicker" }, () => void chrome.runtime.lastError);
+    return;
+  }
+
+  if (msg.type === "startVideoPickerOnTab" && typeof msg.tabId === "number") {
+    chrome.tabs.sendMessage(msg.tabId, { type: "startVideoPicker" }, () => void chrome.runtime.lastError);
+    return;
   }
 });
 
@@ -75,3 +88,52 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => tabVideoFrames.delete(tabId));
+
+// ---------- Reinyección automática de content scripts huérfanos ----------
+// Cuando la extensión se recarga o se actualiza, las pestañas que YA estaban abiertas se quedan
+// con un content script "huérfano": su conexión con la extensión se rompe y no se reemplaza solo
+// hasta que el usuario recarga esa pestaña. Es la causa más probable de que "a veces no detecte el
+// vídeo, sobre todo justo después de recargar la extensión". Aquí, cada vez que este service
+// worker arranca (instalación, actualización, o el navegador lo despierta), hacemos ping a cada
+// pestaña abierta; si no responde, es que no hay content script vivo ahí (huérfano o nunca se
+// inyectó) y lo reinyectamos nosotros mismos, sin esperar a que el usuario recargue nada.
+async function reinjectOrphanedContentScripts() {
+  let tabs;
+  try {
+    tabs = await chrome.tabs.query({});
+  } catch (err) {
+    return;
+  }
+
+  const injectable = tabs.filter((t) => t.id != null && /^https?:\/\//.test(t.url || ""));
+
+  await Promise.allSettled(injectable.map((tab) => ensureContentScript(tab.id)));
+}
+
+function ensureContentScript(tabId) {
+  return new Promise((resolve) => {
+    chrome.tabs.sendMessage(tabId, { type: "ping" }, async (resp) => {
+      if (!chrome.runtime.lastError && resp && resp.ok) {
+        resolve(); // ya hay un content script vivo respondiendo — no tocar nada
+        return;
+      }
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId, allFrames: true },
+          files: ["settings.js", "content.js"]
+        });
+        await chrome.scripting.insertCSS({
+          target: { tabId, allFrames: true },
+          files: ["overlay.css"]
+        });
+      } catch (err) {
+        // Pestañas sin permiso (chrome://, Web Store, PDFs, etc.) fallan aquí — se ignora sin más.
+      }
+      resolve();
+    });
+  });
+}
+
+chrome.runtime.onInstalled.addListener(() => reinjectOrphanedContentScripts());
+chrome.runtime.onStartup.addListener(() => reinjectOrphanedContentScripts());
+reinjectOrphanedContentScripts();

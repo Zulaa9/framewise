@@ -1,5 +1,24 @@
 // Se ejecuta en cada pestaña. Controla el/los <video> de la página y escucha los atajos configurados.
 (function () {
+  // ---------- Auto-reemplazo de instancias huérfanas ----------
+  // Si la extensión se recarga/actualiza mientras esta pestaña ya estaba abierta, el content
+  // script viejo queda "huérfano" (su conexión con la extensión se rompe) pero sigue vivo en la
+  // página, con sus propios escuchadores de teclado/rueda/etc. todavía funcionando a medias. Si
+  // background.js reinyecta una copia nueva encima, sin esto habría DOS instancias reaccionando a
+  // la vez (cada pulsación movería el doble de frames, por ejemplo). Cada instancia se anuncia al
+  // arrancar; cualquier instancia anterior que lo oiga se autodestruye (quita todos sus listeners).
+  const INSTANCE_ID = Math.random().toString(36).slice(2);
+  const NEW_INSTANCE_EVENT = "__fsc_new_instance__";
+  window.dispatchEvent(new CustomEvent(NEW_INSTANCE_EVENT, { detail: INSTANCE_ID }));
+
+  let evicted = false;
+  function onNewInstanceAnnounced(e) {
+    if (evicted || e.detail === INSTANCE_ID) return;
+    evicted = true;
+    cleanup();
+  }
+  window.addEventListener(NEW_INSTANCE_EVENT, onNewInstanceAnnounced);
+
   let settings = null;
   let overlayTimeout = null;
   const domain = location.hostname;
@@ -10,11 +29,18 @@
   // FPS detectado en vivo por requestVideoFrameCallback (no persiste, se recalcula cada carga).
   let liveDetectedFps = null;
 
+  // Vídeos de los que YA hemos avisado al background en ESTA instancia. Es un WeakSet propio de
+  // cada instancia (no un flag guardado en el elemento) a propósito: si esta instancia reemplaza a
+  // una huérfana, el registro del background también empezó de cero, así que hay que re-avisar de
+  // los vídeos aunque el elemento ya estuviera "inicializado" por la instancia anterior.
+  const notifiedVideos = new WeakSet();
+
   loadSettings((s) => { settings = s; });
 
-  chrome.storage.onChanged.addListener((changes, area) => {
+  function onStorageChanged(changes, area) {
     if (area === "sync" || area === "local") loadSettings((s) => { settings = s; });
-  });
+  }
+  chrome.storage.onChanged.addListener(onStorageChanged);
 
   function activeVideo() {
     const videos = Array.from(document.querySelectorAll("video"));
@@ -26,7 +52,22 @@
       v = playing || videos.reduce((a, b) => (b.clientWidth * b.clientHeight > a.clientWidth * a.clientHeight ? b : a));
     }
     initVideo(v);
+    notifyVideoFound(v);
     return v;
+  }
+
+  function notifyVideoFound(v) {
+    if (notifiedVideos.has(v)) return;
+    notifiedVideos.add(v);
+    // Avisa al background de en qué frame de la pestaña está este vídeo — así el popup puede
+    // dirigirse directamente a este frame en vez de arriesgarse a que responda antes uno sin vídeo
+    // (relevante cuando el reproductor real vive dentro de un iframe).
+    try {
+      chrome.runtime.sendMessage({ type: "videoFound" }, () => void chrome.runtime.lastError);
+    } catch (err) {
+      // contexto de extensión inválido (instancia huérfana a la que aún no le ha llegado el aviso
+      // de reemplazo) — se ignora, la instancia nueva ya se está encargando.
+    }
   }
 
   function initVideo(v) {
@@ -43,10 +84,6 @@
     // El "tainted" del canvas (DRM) y la disponibilidad de PiP a veces no se saben hasta que hay
     // datos decodificados de verdad, así que se vuelve a comprobar cuando el vídeo ya tiene un frame.
     v.addEventListener("loadeddata", () => detectCapabilities(v));
-    // Avisa al background de en qué frame de la pestaña está este vídeo — así el popup puede
-    // dirigirse directamente a este frame en vez de arriesgarse a que responda antes uno sin vídeo
-    // (relevante cuando el reproductor real vive dentro de un iframe).
-    chrome.runtime.sendMessage({ type: "videoFound" }, () => void chrome.runtime.lastError);
   }
 
   // Comprueba, una vez por vídeo, qué funciones son técnicamente posibles aquí (no cambia con el
@@ -72,13 +109,17 @@
   // En SPAs como YouTube, al pasar al siguiente vídeo de una lista se recrea (o reemplaza) el
   // <video> sin recargar la página. Si nada dispara activeVideo() justo en ese momento (el usuario
   // no toca nada), ese vídeo nuevo nunca se registra. Este observer detecta el cambio por sí solo,
-  // sin depender de que el usuario interactúe.
+  // sin depender de que el usuario interactúe — y se hace un barrido inicial inmediato además de
+  // vigilar cambios futuros, para no depender de que llegue una interacción o mutación primero.
   function scanForNewVideos() {
     document.querySelectorAll("video").forEach((v) => {
-      if (!v.__fscInit) initVideo(v);
+      initVideo(v);
+      notifyVideoFound(v);
     });
   }
-  new MutationObserver(scanForNewVideos).observe(document.documentElement, { childList: true, subtree: true });
+  scanForNewVideos();
+  const mutationObserver = new MutationObserver(scanForNewVideos);
+  mutationObserver.observe(document.documentElement, { childList: true, subtree: true });
 
   // ---------- Velocidad recordada por dominio ----------
   function applyDomainSpeed(v) {
@@ -233,22 +274,16 @@
   // el propio frameStep() reproduce/pausa el vídeo internamente para generar audio.
   let suppressGenericOverlayUntil = 0;
 
-  document.addEventListener(
-    "pause",
-    (e) => {
-      if (e.target.tagName !== "VIDEO" || Date.now() < suppressGenericOverlayUntil) return;
-      showOverlay(`⏸ Pausa · ${formatTime(e.target.currentTime)}`);
-    },
-    true
-  );
-  document.addEventListener(
-    "play",
-    (e) => {
-      if (e.target.tagName !== "VIDEO" || Date.now() < suppressGenericOverlayUntil) return;
-      showOverlay(`▶ ${formatTime(e.target.currentTime)}`);
-    },
-    true
-  );
+  function onNativePause(e) {
+    if (e.target.tagName !== "VIDEO" || Date.now() < suppressGenericOverlayUntil) return;
+    showOverlay(`⏸ Pausa · ${formatTime(e.target.currentTime)}`);
+  }
+  function onNativePlay(e) {
+    if (e.target.tagName !== "VIDEO" || Date.now() < suppressGenericOverlayUntil) return;
+    showOverlay(`▶ ${formatTime(e.target.currentTime)}`);
+  }
+  document.addEventListener("pause", onNativePause, true);
+  document.addEventListener("play", onNativePlay, true);
 
   function clampTime(video, t) {
     const dur = isFinite(video.duration) ? video.duration : Infinity;
@@ -408,7 +443,9 @@
     video.playbackRate = speed;
     showOverlay(`Velocidad: ${speed.toFixed(2)}x`);
     persistDomainSpeed(speed);
-    chrome.runtime.sendMessage({ type: "speedChanged", speed });
+    try {
+      chrome.runtime.sendMessage({ type: "speedChanged", speed });
+    } catch (err) {}
   }
 
   function stepSpeed(video, dir) {
@@ -451,25 +488,22 @@
   // video.loop siempre en false, escuchamos el evento nativo "ended" (que así sí llega a
   // dispararse) y hacemos nosotros el salto a 0 con seekWithGuard, con las mismas garantías que el
   // resto de saltos de la extensión.
-  document.addEventListener(
-    "ended",
-    async (e) => {
-      const v = e.target;
-      if (v.tagName !== "VIDEO" || !v.__fscManualLoop) return;
-      suppressGenericOverlayUntil = Date.now() + 2000;
-      const res = await seekWithGuard(v, 0);
-      if (res.ok) {
-        v.__fscLoopBroken = false;
-        try { await v.play(); } catch (err) {}
-        suppressGenericOverlayUntil = Date.now() + 300;
-        showOverlay("🔁 Bucle: reiniciado desde el principio");
-      } else {
-        v.__fscLoopBroken = true;
-        v.__fscManualLoop = false;
-      }
-    },
-    true
-  );
+  async function onNativeEnded(e) {
+    const v = e.target;
+    if (v.tagName !== "VIDEO" || !v.__fscManualLoop) return;
+    suppressGenericOverlayUntil = Date.now() + 2000;
+    const res = await seekWithGuard(v, 0);
+    if (res.ok) {
+      v.__fscLoopBroken = false;
+      try { await v.play(); } catch (err) {}
+      suppressGenericOverlayUntil = Date.now() + 300;
+      showOverlay("🔁 Bucle: reiniciado desde el principio");
+    } else {
+      v.__fscLoopBroken = true;
+      v.__fscManualLoop = false;
+    }
+  }
+  document.addEventListener("ended", onNativeEnded, true);
 
   function toggleLoop(video) {
     video.loop = false; // nunca dejamos que el navegador lo gestione internamente, ver nota arriba
@@ -619,51 +653,179 @@
   window.addEventListener("blur", stopAllRepeats);
   document.addEventListener("keyup", stopAllRepeats, true);
 
-  document.addEventListener(
-    "keydown",
-    (e) => {
-      if (!settings || isTypingTarget(e)) return;
-      const video = activeVideo();
-      if (!video) return;
-      const combo = eventToShortcut(e);
-      if (!combo) return;
-      for (const id of Object.keys(settings.actions)) {
-        const shortcut = effectiveShortcutFor(settings, domain, id);
-        if (shortcut && shortcut === combo) {
-          e.preventDefault();
-          e.stopPropagation();
-          if (e.repeat) return; // los repeats del SO se ignoran, usamos nuestro propio temporizador
-          runAction(id, video);
-          startRepeatIfNeeded(id, combo, video);
-          return;
-        }
+  function onKeydown(e) {
+    if (!settings || isTypingTarget(e)) return;
+    const video = activeVideo();
+    if (!video) return;
+    const combo = eventToShortcut(e);
+    if (!combo) return;
+    for (const id of Object.keys(settings.actions)) {
+      const shortcut = effectiveShortcutFor(settings, domain, id);
+      if (shortcut && shortcut === combo) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.repeat) return; // los repeats del SO se ignoran, usamos nuestro propio temporizador
+        runAction(id, video);
+        startRepeatIfNeeded(id, combo, video);
+        return;
       }
-    },
-    true
-  );
+    }
+  }
+  document.addEventListener("keydown", onKeydown, true);
 
   // ---------- Ctrl + rueda del ratón sobre el vídeo = velocidad ----------
   // Solo con Ctrl (o Cmd en Mac) pulsado, para no robarle el scroll normal de la página a sitios
   // donde el vídeo está embebido dentro de un contenido más largo (blogs, foros, etc.).
-  document.addEventListener(
-    "wheel",
-    (e) => {
-      if (!settings || !settings.wheelSpeedControl) return;
-      if (!e.ctrlKey && !e.metaKey) return;
-      const video = activeVideo();
-      if (!video) return;
-      const rect = video.getBoundingClientRect();
-      const over =
-        e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
-      if (!over) return;
-      e.preventDefault();
-      stepSpeed(video, e.deltaY < 0 ? 1 : -1);
-    },
-    { passive: false }
-  );
+  function onWheel(e) {
+    if (!settings || !settings.wheelSpeedControl) return;
+    if (!e.ctrlKey && !e.metaKey) return;
+    const video = activeVideo();
+    if (!video) return;
+    const rect = video.getBoundingClientRect();
+    const over =
+      e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
+    if (!over) return;
+    e.preventDefault();
+    stepSpeed(video, e.deltaY < 0 ? 1 : -1);
+  }
+  document.addEventListener("wheel", onWheel, { passive: false });
 
-  // ---------- Mensajería con popup/options ----------
-  chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  // ---------- Selección manual de vídeo ("Marcar vídeo") ----------
+  // Red de seguridad final: si la detección automática no encuentra nada (embed atípico, vídeo
+  // dentro de shadow DOM inalcanzable, etc.), el usuario puede señalar directamente el vídeo con
+  // el ratón, como el "inspeccionar elemento" de las herramientas de desarrollador.
+  let pickerActive = false;
+  let pickerHighlightEl = null;
+
+  function startVideoPicker() {
+    if (pickerActive) return;
+    pickerActive = true;
+    document.documentElement.style.cursor = "crosshair";
+    showPickerBanner();
+    document.addEventListener("mousemove", onPickerMouseMove, true);
+    document.addEventListener("click", onPickerClick, true);
+    document.addEventListener("keydown", onPickerKeydown, true);
+  }
+
+  function stopVideoPicker() {
+    if (!pickerActive) return;
+    pickerActive = false;
+    document.documentElement.style.cursor = "";
+    hidePickerBanner();
+    clearPickerHighlight();
+    document.removeEventListener("mousemove", onPickerMouseMove, true);
+    document.removeEventListener("click", onPickerClick, true);
+    document.removeEventListener("keydown", onPickerKeydown, true);
+  }
+
+  function clearPickerHighlight() {
+    if (pickerHighlightEl) {
+      pickerHighlightEl.style.outline = "";
+      pickerHighlightEl.style.outlineOffset = "";
+      pickerHighlightEl = null;
+    }
+  }
+
+  function onPickerMouseMove(e) {
+    if (e.target === pickerHighlightEl) return;
+    clearPickerHighlight();
+    pickerHighlightEl = e.target;
+    pickerHighlightEl.style.outline = "3px solid #7cc7ff";
+    pickerHighlightEl.style.outlineOffset = "-2px";
+  }
+
+  function findVideoNear(el) {
+    if (!el) return null;
+    if (el.tagName === "VIDEO") return el;
+    if (el.querySelector) {
+      const inside = el.querySelector("video");
+      if (inside) return inside;
+    }
+    // El clic pudo caer en un control por encima del vídeo (barra de progreso, botón de play…):
+    // buscamos también en los contenedores ancestros.
+    let node = el.parentElement;
+    while (node) {
+      if (node.querySelector) {
+        const v = node.querySelector("video");
+        if (v) return v;
+      }
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function onPickerClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    const target = e.target;
+    stopVideoPicker();
+    const video = findVideoNear(target);
+    if (!video) {
+      showOverlay("⚠ No se encontró ningún <video> ahí — prueba a marcar directamente sobre la imagen del vídeo");
+      notifyPickerDone();
+      return;
+    }
+    video.__fscManuallyPicked = true;
+    initVideo(video);
+    notifiedVideos.delete(video); // fuerza a re-avisar aunque ya estuviera notificado
+    notifyVideoFound(video);
+    suppressGenericOverlayUntil = Date.now() + 400;
+    showOverlay("✅ Vídeo marcado — vuelve a abrir el panel de la extensión");
+    notifyPickerDone();
+  }
+
+  function onPickerKeydown(e) {
+    if (e.key === "Escape") {
+      stopVideoPicker();
+      notifyPickerDone();
+    }
+  }
+
+  function notifyPickerDone() {
+    try {
+      chrome.runtime.sendMessage({ type: "videoPickerDone" }, () => void chrome.runtime.lastError);
+    } catch (err) {}
+  }
+
+  function showPickerBanner() {
+    let el = document.getElementById("__fsc_picker_banner__");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "__fsc_picker_banner__";
+      el.textContent = "🎯 Haz clic sobre el vídeo que quieres controlar (Esc para cancelar)";
+      document.body.appendChild(el);
+    }
+    const fsEl = document.fullscreenElement;
+    const parent = fsEl || document.body;
+    if (el.parentElement !== parent) parent.appendChild(el);
+    el.classList.add("__fsc_show__");
+  }
+
+  function hidePickerBanner() {
+    const el = document.getElementById("__fsc_picker_banner__");
+    if (el) el.remove();
+  }
+
+  // ---------- Mensajería con popup/options/background ----------
+  function onRuntimeMessage(msg, sender, sendResponse) {
+    if (msg.type === "ping") {
+      // Usado por background.js para saber si ya hay un content script vivo en este frame antes
+      // de decidir si hace falta reinyectar uno nuevo.
+      sendResponse({ ok: true });
+      return;
+    }
+    if (msg.type === "startVideoPicker") {
+      startVideoPicker();
+      sendResponse({ ok: true });
+      return;
+    }
+    if (msg.type === "cancelVideoPicker") {
+      stopVideoPicker();
+      sendResponse({ ok: true });
+      return;
+    }
+
     const video = activeVideo();
     if (!video) {
       sendResponse({ ok: false, error: "no-video" });
@@ -725,5 +887,23 @@
       sendResponse({ ok: true, fps: liveDetectedFps || null });
       return;
     }
-  });
+  }
+  chrome.runtime.onMessage.addListener(onRuntimeMessage);
+
+  // ---------- Limpieza al ser reemplazados por una instancia nueva ----------
+  function cleanup() {
+    window.removeEventListener(NEW_INSTANCE_EVENT, onNewInstanceAnnounced);
+    document.removeEventListener("pause", onNativePause, true);
+    document.removeEventListener("play", onNativePlay, true);
+    document.removeEventListener("ended", onNativeEnded, true);
+    window.removeEventListener("blur", stopAllRepeats);
+    document.removeEventListener("keyup", stopAllRepeats, true);
+    document.removeEventListener("keydown", onKeydown, true);
+    document.removeEventListener("wheel", onWheel, { passive: false });
+    stopVideoPicker();
+    stopAllRepeats();
+    mutationObserver.disconnect();
+    try { chrome.runtime.onMessage.removeListener(onRuntimeMessage); } catch (err) {}
+    try { chrome.storage.onChanged.removeListener(onStorageChanged); } catch (err) {}
+  }
 })();

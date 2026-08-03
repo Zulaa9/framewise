@@ -287,6 +287,27 @@ async function init() {
   bind("volumeReset", () => sendToTab({ type: "runAction", id: "volumeReset" }));
   bind("useDetectedFps", () => sendToTab({ type: "useDetectedFpsForDomain" }));
 
+  // Redes de seguridad para cuando no se encuentra vídeo (p. ej. justo tras recargar la
+  // extensión, con content scripts huérfanos en pestañas que ya estaban abiertas).
+  q("retryBtn").addEventListener("click", () => refreshState());
+
+  q("reloadTabBtn").addEventListener("click", () => {
+    if (!activeTabId) return;
+    chrome.tabs.reload(activeTabId, {}, () => {
+      void chrome.runtime.lastError;
+      setTimeout(refreshState, 1200);
+    });
+  });
+
+  q("pickVideoBtn").addEventListener("click", () => {
+    if (!activeTabId) return;
+    // Se manda vía background (en vez de tabs.sendMessage directo) porque desde la ventana
+    // desacoplada/flotante activeTabId no es "la pestaña actual" de este contexto, y
+    // chrome.tabs.sendMessage no necesita ningún permiso especial para esto de todos modos.
+    chrome.runtime.sendMessage({ type: "startVideoPickerOnTab", tabId: activeTabId }, () => void chrome.runtime.lastError);
+    window.close();
+  });
+
   q("speedSlider").addEventListener("input", async (e) => {
     const vals = sliderValues();
     const idx = parseInt(e.target.value, 10);

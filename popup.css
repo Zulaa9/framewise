@@ -29,6 +29,25 @@ header button:hover { background: #2a2a2e; }
 
 #controls { padding: 12px; }
 .hint { padding: 16px; text-align: center; color: #999; }
+.hint p { margin: 0 0 12px; }
+
+.no-video-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.no-video-actions button {
+  background: #2a2a2e;
+  border: 1px solid #3a3a3f;
+  color: #ddd;
+  border-radius: 8px;
+  padding: 9px 10px;
+  cursor: pointer;
+  font-size: 12.5px;
+}
+.no-video-actions button:hover { background: #35353b; }
+#pickVideoBtn { border-color: #2f4a6e; color: #7cc7ff; background: #16232f; }
+#pickVideoBtn:hover { background: #1c2c3c; }
 .hidden { display: none; }
 
 .row { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }

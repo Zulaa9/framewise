@@ -3,7 +3,8 @@
   "name": "Frame & Speed Controller",
   "version": "1.1.0",
   "description": "Avanza/retrocede fotograma a fotograma, controla la velocidad de reproducción y define atajos de teclado propios (globales o por sitio) para cualquier vídeo HTML5.",
-  "permissions": ["storage", "activeTab"],
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
   "action": {
     "default_popup": "popup.html",
     "default_title": "Frame & Speed Controller",

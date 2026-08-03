@@ -47,6 +47,8 @@ Nació para resolver un caso concreto (Crunchyroll no expone forma de ir frame a
 - Funciona aunque el reproductor esté dentro de un **iframe**, y también si hay **varios vídeos reproduciéndose a la vez en frames distintos** — se dirige siempre al que esté activo (o al de mayor tamaño visible si ninguno se reproduce).
 - Detecta vídeos nuevos automáticamente en páginas de una sola página (SPA) como YouTube, incluso al pasar al siguiente vídeo de una lista de reproducción sin recargar la página.
 - Reintentos automáticos si el popup se abre justo cuando la página todavía está cargando.
+- **Reinyección automática de content scripts huérfanos**: al recargar/actualizar la extensión, las pestañas que ya estaban abiertas se quedan con una copia del script desconectada de la extensión (limitación de Chrome, no arreglable desde dentro de esa copia). El `background.js` hace ping a cada pestaña abierta al arrancar y reinyecta una copia nueva donde haga falta, sin que el usuario tenga que recargar la página — con protección para que la copia vieja se autodestruya y no queden dos instancias duplicando acciones.
+- Si aun así la detección automática falla, el popup ofrece tres redes de seguridad cuando no encuentra vídeo: **🔄 Buscar de nuevo**, **↻ Recargar la pestaña y reintentar**, y **🎯 Marcar vídeo manualmente** (selecciona con el ratón el vídeo exacto a controlar, al estilo "inspeccionar elemento" de las herramientas de desarrollador — la opción más fiable cuando todo lo demás falla).
 
 ## Instalación (modo desarrollador)
 
@@ -96,6 +98,7 @@ La configuración se guarda en `chrome.storage.sync` (atajos, presets, overrides
 - La captura de fotograma (PNG) puede fallar en vídeos con DRM, ya que el navegador bloquea la lectura del `<canvas>` sobre contenido protegido.
 - La amplificación de volumen por encima de 100% puede no ser posible en vídeo de origen cruzado sin cabeceras CORS (poco frecuente en streaming vía MSE como YouTube/Crunchyroll).
 - La ventana flotante (📌) requiere Chrome/Edge 116+ (Document Picture-in-Picture API); en navegadores sin soporte, el botón simplemente no aparece.
+- La detección automática de vídeo, aun con las protecciones anteriores, puede fallar puntualmente en algunos sitios/casos concretos que todavía no se han identificado del todo. Si pasa, **"🎯 Marcar vídeo manualmente"** en el popup es la vía fiable — funciona siempre, independientemente de la causa del fallo automático.
 
 ## Licencia
 
