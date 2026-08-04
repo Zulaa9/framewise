@@ -4,7 +4,7 @@
   "version": "1.1.0",
   "description": "Frame-by-frame control for HTML5 video: playback speed, volume amplification, screenshots, Picture-in-Picture and custom shortcuts.",
   "homepage_url": "https://framewise.zula.dev",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "scripting"],
   "host_permissions": ["<all_urls>"],
   "action": {
     "default_popup": "popup.html",

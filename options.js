@@ -48,13 +48,18 @@ function renderPresetChips() {
     });
   const hasGridValue = settings.speedPresets.some(isOnQuarterGrid);
   q("presetStepDown").disabled = !hasGridValue || settings.speedPresets.length <= 1;
+  q("presetStepUp").disabled = highestGridPreset() >= SPEED_MAX;
 }
 
 function addPresetFromInput() {
   const input = q("newPresetValue");
   const value = parseFloat(input.value);
-  if (isNaN(value) || value <= 0) {
+  if (isNaN(value)) {
     alert("Escribe un número de velocidad válido, ej: 1.6");
+    return;
+  }
+  if (value < SPEED_MIN || value > SPEED_MAX) {
+    alert(`La velocidad debe estar entre ${SPEED_MIN}x y ${SPEED_MAX}x — es el rango real que admite la extensión.`);
     return;
   }
   if (!settings.speedPresets.some((v) => Math.abs(v - value) < 0.0001)) {
@@ -84,6 +89,7 @@ function highestGridPreset() {
 // Añade el siguiente valor de la escala de 0.25, por encima del más alto que ya esté en esa escala.
 function addQuarterStepUp() {
   const next = Math.round((highestGridPreset() + QUARTER_STEP) * 100) / 100;
+  if (next > SPEED_MAX) return; // fuera del rango real admitido — el botón ya se deshabilita antes de llegar aquí
   if (!settings.speedPresets.some((v) => Math.abs(v - next) < 0.0001)) {
     settings.speedPresets.push(next);
     renderPresetChips();
@@ -225,6 +231,17 @@ function renderShortcuts() {
   });
 }
 
+// Atajo efectivo de cada acción en un ámbito dado (global, o un dominio con sus overrides aplicados
+// sobre el global) — mismo criterio que effectiveShortcutFor en settings.js, pero para todas las
+// acciones a la vez, así se puede detectar si dos acciones comparten combinación en ese ámbito.
+function effectiveShortcutsForScope(scope) {
+  const map = {};
+  Object.keys(settings.actions).forEach((id) => {
+    map[id] = effectiveShortcutFor(settings, scope === "global" ? "__global__" : scope, id);
+  });
+  return map;
+}
+
 function startRecording(id, keycapEl, btnEl) {
   if (recordingId) return;
   recordingId = id;
@@ -260,6 +277,7 @@ function startRecording(id, keycapEl, btnEl) {
         settings.domainOverrides[currentScope][id] = combo;
         renderShortcuts();
         renderScopeSelect();
+        warnIfDomainClash(id, combo);
       }
     } else {
       renderShortcuts();
@@ -279,6 +297,31 @@ function warnIfClash(clash, combo) {
     const warn = document.createElement("div");
     warn.className = "warn";
     warn.textContent = `⚠ "${combo}" ya estaba asignado aquí — considera cambiarlo`;
+    clashRow.appendChild(warn);
+  }
+}
+
+// Colisión de atajos EFECTIVOS dentro de un dominio: comprueba la acción recién grabada (id/combo,
+// ya guardada en settings.domainOverrides[currentScope]) contra el resultado real de cada acción en
+// ese dominio — que puede venir de un override propio, o heredado del global si no hay override (o
+// si el override está vacío, es decir la acción está desactivada ahí, lo cual nunca choca con nada).
+function warnIfDomainClash(id, combo) {
+  const effective = effectiveShortcutsForScope(currentScope);
+  const clashId = Object.keys(effective).find((oid) => oid !== id && effective[oid] && effective[oid] === combo);
+  if (!clashId) return;
+
+  const overrides = settings.domainOverrides[currentScope] || {};
+  const clashIsOwnOverride = Object.prototype.hasOwnProperty.call(overrides, clashId) && overrides[clashId] !== "";
+  const source = clashIsOwnOverride ? "personalizado en este dominio" : "heredado del global";
+  const clashLabel = settings.actions[clashId].label;
+
+  const clashRow = [...document.querySelectorAll(".shortcut-row")].find(
+    (r) => r.querySelector(".label").textContent === clashLabel
+  );
+  if (clashRow) {
+    const warn = document.createElement("div");
+    warn.className = "warn";
+    warn.textContent = `⚠ "${combo}" ya está en uso aquí por "${clashLabel}" (${source}) — considera cambiarlo`;
     clashRow.appendChild(warn);
   }
 }
@@ -313,22 +356,133 @@ function exportSettings() {
   setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
+const KNOWN_ACTION_IDS = Object.keys(SYNC_DEFAULTS.actions);
+
+function isPlainObject(v) {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+// Normaliza una entrada de settings.actions[id] proveniente de un archivo importado: si no tiene la
+// forma esperada, se usa la acción por defecto entera; si la tiene, cada campo se sanea por
+// separado (nunca se confía en el tipo de un campo suelto del JSON importado).
+function normalizeImportedAction(id, raw) {
+  const base = DEFAULT_SETTINGS.actions[id];
+  if (!isPlainObject(raw)) return { ...base };
+  return {
+    label: typeof raw.label === "string" && raw.label ? raw.label : base.label,
+    shortcut: typeof raw.shortcut === "string" ? raw.shortcut : base.shortcut,
+    repeatable: typeof raw.repeatable === "boolean" ? raw.repeatable : base.repeatable
+  };
+}
+
+// Valida una configuración importada ANTES de aplicar nada: si algo tiene un tipo fundamentalmente
+// incorrecto en los campos clave (speedPresets, actions, domainOverrides, los mapas por dominio),
+// se rechaza entera con un mensaje claro en vez de dejar el ajuste actual a medio pisar. Los campos
+// ausentes (configuraciones antiguas) se rellenan con los valores por defecto; los valores sueltos
+// con tipo incorrecto dentro de una colección válida se descartan uno a uno en vez de invalidar todo
+// el archivo.
+function validateImportedSettings(raw) {
+  if (!isPlainObject(raw)) {
+    return { ok: false, error: "el archivo no contiene un objeto de configuración." };
+  }
+
+  let speedPresets = DEFAULT_SETTINGS.speedPresets.slice();
+  if (raw.speedPresets !== undefined) {
+    if (!Array.isArray(raw.speedPresets)) {
+      return { ok: false, error: '"speedPresets" debería ser una lista de números.' };
+    }
+    const valid = raw.speedPresets.filter(
+      (v) => typeof v === "number" && isFinite(v) && v >= SPEED_MIN && v <= SPEED_MAX
+    );
+    speedPresets = valid.length ? valid : DEFAULT_SETTINGS.speedPresets.slice();
+  }
+
+  let actions = { ...DEFAULT_SETTINGS.actions };
+  if (raw.actions !== undefined) {
+    if (!isPlainObject(raw.actions)) {
+      return { ok: false, error: '"actions" debería ser un objeto de acciones.' };
+    }
+    actions = {};
+    KNOWN_ACTION_IDS.forEach((id) => {
+      actions[id] = normalizeImportedAction(id, raw.actions[id]);
+    });
+  }
+
+  let domainOverrides = {};
+  if (raw.domainOverrides !== undefined) {
+    if (!isPlainObject(raw.domainOverrides)) {
+      return { ok: false, error: '"domainOverrides" debería ser un objeto (dominio → atajos).' };
+    }
+    Object.keys(raw.domainOverrides).forEach((domain) => {
+      const entry = raw.domainOverrides[domain];
+      if (!isPlainObject(entry)) return; // dominio con forma inválida: se descarta sin invalidar el resto
+      const cleanEntry = {};
+      Object.keys(entry).forEach((id) => {
+        if (KNOWN_ACTION_IDS.includes(id) && typeof entry[id] === "string") {
+          cleanEntry[id] = entry[id];
+        }
+      });
+      domainOverrides[domain] = cleanEntry;
+    });
+  }
+
+  const domainMapFields = ["domainSpeeds", "domainFps", "domainVolumes"];
+  const domainMaps = {};
+  for (const field of domainMapFields) {
+    if (raw[field] !== undefined && !isPlainObject(raw[field])) {
+      return { ok: false, error: `"${field}" debería ser un objeto (dominio → valor).` };
+    }
+    domainMaps[field] = isPlainObject(raw[field]) ? { ...raw[field] } : { ...DEFAULT_SETTINGS[field] };
+  }
+
+  const numberOr = (v, fallback) => (typeof v === "number" && isFinite(v) ? v : fallback);
+  const boolOr = (v, fallback) => (typeof v === "boolean" ? v : fallback);
+
+  const normalized = {
+    ...DEFAULT_SETTINGS,
+    fps: numberOr(raw.fps, DEFAULT_SETTINGS.fps),
+    speedStep: numberOr(raw.speedStep, DEFAULT_SETTINGS.speedStep),
+    seekSeconds: numberOr(raw.seekSeconds, DEFAULT_SETTINGS.seekSeconds),
+    multiFrameCount: numberOr(raw.multiFrameCount, DEFAULT_SETTINGS.multiFrameCount),
+    showOverlay: boolOr(raw.showOverlay, DEFAULT_SETTINGS.showOverlay),
+    frameStepAudio: boolOr(raw.frameStepAudio, DEFAULT_SETTINGS.frameStepAudio),
+    wheelSpeedControl: boolOr(raw.wheelSpeedControl, DEFAULT_SETTINGS.wheelSpeedControl),
+    rememberSpeedPerDomain: boolOr(raw.rememberSpeedPerDomain, DEFAULT_SETTINGS.rememberSpeedPerDomain),
+    volumeMax: numberOr(raw.volumeMax, DEFAULT_SETTINGS.volumeMax),
+    volumeStep: numberOr(raw.volumeStep, DEFAULT_SETTINGS.volumeStep),
+    rememberVolumePerDomain: boolOr(raw.rememberVolumePerDomain, DEFAULT_SETTINGS.rememberVolumePerDomain),
+    speedPresets,
+    actions,
+    domainOverrides,
+    domainSpeeds: domainMaps.domainSpeeds,
+    domainFps: domainMaps.domainFps,
+    domainVolumes: domainMaps.domainVolumes
+  };
+
+  return { ok: true, settings: normalized };
+}
+
 function importSettingsFromFile(file) {
   const reader = new FileReader();
   reader.onload = () => {
+    let raw;
     try {
-      const imported = JSON.parse(reader.result);
-      settings = { ...DEFAULT_SETTINGS, ...imported };
-      settings.actions = { ...DEFAULT_SETTINGS.actions, ...(imported.actions || {}) };
-      settings.domainOverrides = imported.domainOverrides || {};
-      settings.domainSpeeds = imported.domainSpeeds || {};
-      settings.domainFps = imported.domainFps || {};
-      currentScope = "global";
-      populateForm();
-      alert('Configuración importada. Pulsa "Guardar cambios" para aplicarla.');
+      raw = JSON.parse(reader.result);
     } catch (err) {
       alert("Archivo inválido: " + err.message);
+      return;
     }
+
+    const result = validateImportedSettings(raw);
+    if (!result.ok) {
+      alert("No se pudo importar la configuración: " + result.error);
+      return; // settings actual queda intacto, no se aplica nada parcial
+    }
+
+    settings = result.settings;
+    currentScope = "global";
+    populateForm();
+    alert('Configuración importada. Pulsa "Guardar cambios" para aplicarla.');
   };
   reader.readAsText(file);
 }

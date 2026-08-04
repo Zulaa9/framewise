@@ -1,5 +1,10 @@
 // Configuración por defecto y utilidades compartidas por content.js, popup.js, options.js y background.js.
 
+// Rango real de velocidad admitido por el reproductor (ver setSpeed en content.js). Vive aquí para
+// que options.js pueda validar presets manuales contra el mismo límite sin duplicar los números.
+const SPEED_MIN = 0.07;
+const SPEED_MAX = 16;
+
 // Ajustes que tiene sentido llevar contigo entre equipos (chrome.storage.sync, límite ~100KB).
 const SYNC_DEFAULTS = {
   fps: 23.976,

@@ -23,6 +23,19 @@
   let overlayTimeout = null;
   const domain = location.hostname;
 
+  // Vídeo marcado a mano con el picker (ver startVideoPicker más abajo). Como mucho uno activo por
+  // documento: activeVideo() le da prioridad mientras siga conectado al DOM, y deja de usarlo en
+  // cuanto se desconecta (el sitio lo quita/recrea), volviendo sola a la heurística automática.
+  let manuallyPickedVideo = null;
+
+  function setManuallyPickedVideo(video) {
+    if (manuallyPickedVideo && manuallyPickedVideo !== video) {
+      manuallyPickedVideo.__fscManuallyPicked = false;
+    }
+    manuallyPickedVideo = video;
+    video.__fscManuallyPicked = true;
+  }
+
   // Repetición ("burst") mientras se mantiene pulsada una tecla de acción repetible.
   let heldRepeat = null; // { combo, id }
 
@@ -43,6 +56,17 @@
   chrome.storage.onChanged.addListener(onStorageChanged);
 
   function activeVideo() {
+    if (manuallyPickedVideo) {
+      if (manuallyPickedVideo.isConnected) {
+        initVideo(manuallyPickedVideo);
+        notifyVideoFound(manuallyPickedVideo);
+        return manuallyPickedVideo;
+      }
+      // El sitio quitó/recreó el vídeo marcado (SPA, cambio de episodio, etc.) — se abandona la
+      // marca en vez de quedarse apuntando a un elemento muerto, y se vuelve a la heurística normal.
+      manuallyPickedVideo = null;
+    }
+
     const videos = Array.from(document.querySelectorAll("video"));
     if (videos.length === 0) return null;
     let v;
@@ -439,7 +463,7 @@
   }
 
   function setSpeed(video, speed) {
-    speed = Math.max(0.07, Math.min(16, speed));
+    speed = Math.max(SPEED_MIN, Math.min(SPEED_MAX, speed));
     video.playbackRate = speed;
     showOverlay(`Velocidad: ${speed.toFixed(2)}x`);
     persistDomainSpeed(speed);
@@ -766,7 +790,7 @@
       notifyPickerDone();
       return;
     }
-    video.__fscManuallyPicked = true;
+    setManuallyPickedVideo(video);
     initVideo(video);
     notifiedVideos.delete(video); // fuerza a re-avisar aunque ya estuviera notificado
     notifyVideoFound(video);
