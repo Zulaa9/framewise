@@ -34,6 +34,7 @@ const SYNC_DEFAULTS = {
     togglePip:          { label: "Picture-in-Picture",                 shortcut: "", repeatable: false },
     toggleMute:         { label: "Silenciar / Activar audio",          shortcut: "", repeatable: false },
     screenshot:         { label: "Capturar frame actual (PNG)",        shortcut: "", repeatable: false },
+    recordClip:         { label: "Grabar / detener clip de vídeo",     shortcut: "", repeatable: false },
     volumeUp:           { label: "Subir volumen",                      shortcut: "", repeatable: true },
     volumeDown:         { label: "Bajar volumen",                      shortcut: "", repeatable: true },
     volumeReset:        { label: "Volumen normal (100%)",              shortcut: "", repeatable: false }

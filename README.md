@@ -46,6 +46,7 @@ It has no build step and no external dependencies: plain JavaScript, loaded dire
 - Play/pause, mute, Picture-in-Picture.
 - Loop, re-implemented manually (not via the native `loop` attribute, which can hang playback if the browser tries to seek back to a portion of the stream that's no longer buffered) — it uses the same stall-safe mechanism as frame stepping and reports a clear warning if it fails instead of breaking playback.
 - Frame capture to PNG (disabled automatically when the source video is DRM-protected and the browser blocks canvas access).
+- Clip recording to WebM: click to start, click again to stop and download — records the video exactly as it's currently playing (same speed, same audio), via `HTMLMediaElement.captureStream()` + `MediaRecorder`. Disabled automatically for cross-origin video without CORS headers or DRM-protected content, for the same reason screenshots are.
 - On-screen overlay confirming each action, including pause/resume with an exact timestamp — this also fires when pausing with the site's own native controls, not only through Framewise.
 - Detachable popup window that stays open regardless of where you click, and an optional true always-on-top floating mode (Document Picture-in-Picture, Chrome/Edge 116+).
 - Configuration export/import as JSON, and a "reset everything" action with a two-step confirmation.
@@ -117,6 +118,7 @@ Manifest V3, no bundler, no runtime dependencies.
 - **Seeking beyond what the site has buffered isn't always possible.** With DRM-protected streaming (Widevine, etc.), the `<video>` element can't fetch content on its own — only the site's own JavaScript decides what to load and when. Framewise detects this and reverts safely instead of hanging, but it cannot force a site to load a segment it doesn't want to serve.
 - Audio on the backward frame step is an approximate confirmation tick, not true reverse playback (browsers don't support real reverse audio).
 - PNG frame capture can fail on DRM-protected video, since the browser blocks reading `<canvas>` content from protected sources.
+- Clip recording is only available as WebM (Chrome's `MediaRecorder` doesn't natively mux MP4), and fails for the same cross-origin/DRM reasons as PNG frame capture.
 - Volume amplification above 100% may be unavailable on cross-origin video without CORS headers.
 - The floating window mode requires Chrome/Edge 116+ (Document Picture-in-Picture API); the button simply doesn't appear on unsupported browsers.
 - Automatic video detection, despite the safeguards above, can still occasionally miss on specific sites or edge cases that haven't been fully characterized yet. The manual video picker is the reliable fallback — it works regardless of the underlying cause.

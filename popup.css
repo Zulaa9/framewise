@@ -91,6 +91,13 @@ header button:hover { background: #2a2a2e; }
   border-color: #7a5a20;
   color: #ffcb7a;
 }
+.buttons-row button.recording {
+  background: #4a1414;
+  border-color: #ff4040;
+  color: #fff;
+  font-weight: 700;
+}
+.buttons-row button.recording:hover { background: #5a1414; }
 .buttons-row button.warn:hover { background: #3a2e18; }
 
 .section-label {

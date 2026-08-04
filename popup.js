@@ -109,12 +109,17 @@ function setButtonWarning(id, warn, reasonIfWarn) {
 }
 
 function applyCapabilities(caps, loopBroken) {
-  caps = caps || { pip: true, screenshot: true, frameAudio: true };
+  caps = caps || { pip: true, screenshot: true, frameAudio: true, recordClip: true };
   setButtonAvailability("togglePip", caps.pip, "Picture-in-Picture no disponible en este vídeo");
   setButtonAvailability(
     "screenshot",
     caps.screenshot,
     "No se puede capturar: vídeo protegido (DRM) — el navegador bloquea leer sus fotogramas"
+  );
+  setButtonAvailability(
+    "recordClip",
+    caps.recordClip,
+    "Grabación no disponible en este vídeo (navegador sin soporte de captureStream)"
   );
   setButtonWarning(
     "toggleLoop",
@@ -161,6 +166,8 @@ async function refreshState() {
   syncSliderToSpeed(resp.playbackRate);
   q("toggleMute").textContent = resp.muted ? "🔇" : "🔊";
   q("toggleLoop").classList.toggle("active", !!resp.loop);
+  q("recordClip").textContent = resp.recording ? "⏹ Detener grabación" : "⏺ Grabar clip";
+  q("recordClip").classList.toggle("recording", !!resp.recording);
   renderPresets(resp.playbackRate);
   applyCapabilities(resp.capabilities, resp.loopBroken);
 
@@ -281,6 +288,7 @@ async function init() {
   bind("toggleLoop", () => sendToTab({ type: "runAction", id: "toggleLoop" }));
   bind("togglePip", () => sendToTab({ type: "runAction", id: "togglePip" }));
   bind("screenshot", () => sendToTab({ type: "runAction", id: "screenshot" }));
+  bind("recordClip", () => sendToTab({ type: "runAction", id: "recordClip" }));
   bind("speedUp", () => sendToTab({ type: "runAction", id: "speedUp" }));
   bind("speedDown", () => sendToTab({ type: "runAction", id: "speedDown" }));
   bind("volumeUp", () => sendToTab({ type: "runAction", id: "volumeUp" }));

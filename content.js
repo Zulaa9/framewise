@@ -97,7 +97,7 @@
   function initVideo(v) {
     if (v.__fscInit) return;
     v.__fscInit = true;
-    v.__fscCapabilities = { pip: false, screenshot: false, frameAudio: false };
+    v.__fscCapabilities = { pip: false, screenshot: false, frameAudio: false, recordClip: false };
     v.__fscLoopBroken = false;
     v.__fscManualLoop = false;
     v.loop = false; // por si el sitio lo trae activado de fábrica; el bucle lo gestionamos nosotros
@@ -117,6 +117,23 @@
 
     caps.frameAudio = typeof v.requestVideoFrameCallback === "function";
     caps.pip = !!(document.pictureInPictureEnabled && !v.disablePictureInPicture);
+
+    try {
+      // Igual que el canvas del screenshot: captureStream() lanza excepción de inmediato para vídeo
+      // de origen cruzado sin cabeceras CORS (y, en la práctica, también para bastante contenido con
+      // DRM), así que basta con probarlo y parar las pistas de prueba sin dejarlas corriendo.
+      const probe =
+        typeof v.captureStream === "function"
+          ? v.captureStream()
+          : typeof v.mozCaptureStream === "function"
+          ? v.mozCaptureStream()
+          : null;
+      if (!probe) throw new Error("captureStream no soportado");
+      probe.getTracks().forEach((t) => t.stop());
+      caps.recordClip = true;
+    } catch (err) {
+      caps.recordClip = false;
+    }
 
     try {
       const canvas = document.createElement("canvas");
@@ -589,6 +606,81 @@
     }
   }
 
+  // ---------- Grabación de clip ----------
+  // Graba el vídeo tal como se está reproduciendo AHORA (misma velocidad, mismo audio) desde que se
+  // pulsa hasta que se vuelve a pulsar — no es un buffer retroactivo tipo "replay", es una grabación
+  // hacia delante en tiempo real, con el mismo criterio que el screenshot: lo que se ve es lo que se
+  // guarda. Un único MediaRecorder activo a la vez, ligado al vídeo sobre el que se pulsó "grabar".
+  let mediaRecorder = null;
+
+  function pickRecorderMimeType() {
+    const candidates = ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
+    return candidates.find((t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t)) || "";
+  }
+
+  function saveRecording(chunks, mimeType, startTime) {
+    if (!chunks.length) {
+      showOverlay("⚠ La grabación quedó vacía — no se guardó nada");
+      return;
+    }
+    const blob = new Blob(chunks, { type: mimeType || "video/webm" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `clip_${Math.round(startTime * 1000)}ms.webm`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+    showOverlay("💾 Clip guardado");
+  }
+
+  function startRecording(video) {
+    if (mediaRecorder) return; // ya hay una grabación en marcha
+    let stream;
+    try {
+      stream =
+        typeof video.captureStream === "function"
+          ? video.captureStream()
+          : typeof video.mozCaptureStream === "function"
+          ? video.mozCaptureStream()
+          : null;
+      if (!stream) throw new Error("captureStream no soportado");
+      const mimeType = pickRecorderMimeType();
+      mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+    } catch (err) {
+      mediaRecorder = null;
+      showOverlay("⚠ No se puede grabar este vídeo (¿protegido por DRM o sin soporte del navegador?)");
+      return;
+    }
+
+    const chunks = [];
+    const startTime = video.currentTime;
+    mediaRecorder.addEventListener("dataavailable", (e) => {
+      if (e.data && e.data.size > 0) chunks.push(e.data);
+    });
+    mediaRecorder.addEventListener("stop", () => {
+      stream.getTracks().forEach((t) => t.stop());
+      const mimeType = mediaRecorder.mimeType;
+      mediaRecorder = null;
+      saveRecording(chunks, mimeType, startTime);
+    });
+
+    mediaRecorder.start();
+    showOverlay("⏺ Grabando clip…");
+  }
+
+  function stopRecording() {
+    if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+    showOverlay("⏹ Deteniendo grabación…");
+    mediaRecorder.stop();
+  }
+
+  function toggleRecording(video) {
+    if (mediaRecorder) stopRecording();
+    else startRecording(video);
+  }
+
   function runAction(id, video, opts) {
     switch (id) {
       case "frameBack": return frameStep(video, -1, opts);
@@ -605,6 +697,7 @@
       case "togglePip": return togglePip(video);
       case "toggleMute": return toggleMute(video);
       case "screenshot": return screenshot(video);
+      case "recordClip": return toggleRecording(video);
       case "volumeUp": return volumeStep(video, 1);
       case "volumeDown": return volumeStep(video, -1);
       case "volumeReset": return setVolume(video, 100);
@@ -894,10 +987,11 @@
         domain,
         detectedFps: liveDetectedFps,
         domainFps: settings.domainFps[domain] || null,
-        capabilities: video.__fscCapabilities || { pip: true, screenshot: true, frameAudio: true },
+        capabilities: video.__fscCapabilities || { pip: true, screenshot: true, frameAudio: true, recordClip: true },
         loopBroken: !!video.__fscLoopBroken,
         volume: currentVolumePercent(video),
-        volumeMax: (settings && settings.volumeMax) || 300
+        volumeMax: (settings && settings.volumeMax) || 300,
+        recording: !!mediaRecorder
       });
       return;
     }
@@ -943,6 +1037,7 @@
     document.removeEventListener("wheel", onWheel, { passive: false });
     stopVideoPicker();
     stopAllRepeats();
+    stopRecording(); // si había una grabación en marcha, se cierra y se guarda en vez de perderla
     mutationObserver.disconnect();
     if (scanTimeoutId !== null) clearTimeout(scanTimeoutId);
     try { chrome.runtime.onMessage.removeListener(onRuntimeMessage); } catch (err) {}
