@@ -235,6 +235,7 @@ async function init() {
 
   if (paramTabId) {
     isDetachedWindow = true;
+    document.body.classList.add("windowed"); // ancho fluido: aquí el contenedor real no es 300px
     activeTabId = parseInt(paramTabId, 10);
     activeHostname = params.get("hostname") || null;
     q("detachBtn").classList.add("hidden");

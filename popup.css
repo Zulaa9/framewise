@@ -6,6 +6,13 @@ body {
   background: #1c1c1f;
   color: #f0f0f0;
 }
+/* Ventana desacoplada y flotante (Document PiP): ambas piden un contenido más ancho que el popup
+   normal (ver floatWindow/detachBtn en popup.js) — un ancho fijo de 300px dejaría un hueco vacío
+   lateral. El popup de la barra de herramientas nunca lleva esta clase, así que su tamaño natural
+   de 300px no cambia. */
+body.windowed {
+  width: 100%;
+}
 header {
   display: flex;
   align-items: center;

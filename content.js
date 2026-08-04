@@ -141,8 +141,25 @@
       notifyVideoFound(v);
     });
   }
-  scanForNewVideos();
-  const mutationObserver = new MutationObserver(scanForNewVideos);
+
+  // Páginas con DOM muy activo (chat en directo, scroll infinito…) pueden hacer que el observer se
+  // dispare muchas veces por segundo. En vez de escanear todo el documento en cada aviso, se agrupan
+  // las ráfagas en un único barrido, con un debounce corto y fijo (no requestAnimationFrame: rAF se
+  // pausa o se retrasa mucho en pestañas que no se están pintando activamente —p. ej. una pestaña en
+  // segundo plano con un vídeo reproduciéndose, que es precisamente un caso de uso real de esta
+  // extensión— y eso retrasaría la detección de forma perceptible, justo lo que se quiere evitar).
+  const VIDEO_SCAN_DEBOUNCE_MS = 120;
+  let scanTimeoutId = null;
+  function scheduleScan() {
+    if (scanTimeoutId !== null) return;
+    scanTimeoutId = setTimeout(() => {
+      scanTimeoutId = null;
+      scanForNewVideos();
+    }, VIDEO_SCAN_DEBOUNCE_MS);
+  }
+
+  scanForNewVideos(); // barrido inicial inmediato, sin pasar por el agrupado de ráfagas
+  const mutationObserver = new MutationObserver(scheduleScan);
   mutationObserver.observe(document.documentElement, { childList: true, subtree: true });
 
   // ---------- Velocidad recordada por dominio ----------
@@ -927,6 +944,7 @@
     stopVideoPicker();
     stopAllRepeats();
     mutationObserver.disconnect();
+    if (scanTimeoutId !== null) clearTimeout(scanTimeoutId);
     try { chrome.runtime.onMessage.removeListener(onRuntimeMessage); } catch (err) {}
     try { chrome.storage.onChanged.removeListener(onStorageChanged); } catch (err) {}
   }

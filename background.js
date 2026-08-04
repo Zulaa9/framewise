@@ -93,10 +93,20 @@ chrome.tabs.onRemoved.addListener((tabId) => tabVideoFrames.delete(tabId));
 // Cuando la extensión se recarga o se actualiza, las pestañas que YA estaban abiertas se quedan
 // con un content script "huérfano": su conexión con la extensión se rompe y no se reemplaza solo
 // hasta que el usuario recarga esa pestaña. Es la causa más probable de que "a veces no detecte el
-// vídeo, sobre todo justo después de recargar la extensión". Aquí, cada vez que este service
-// worker arranca (instalación, actualización, o el navegador lo despierta), hacemos ping a cada
-// pestaña abierta; si no responde, es que no hay content script vivo ahí (huérfano o nunca se
-// inyectó) y lo reinyectamos nosotros mismos, sin esperar a que el usuario recargue nada.
+// vídeo, sobre todo justo después de recargar la extensión". Hacemos ping a cada pestaña abierta;
+// si no responde, es que no hay content script vivo ahí (huérfano o nunca se inyectó) y lo
+// reinyectamos nosotros mismos, sin esperar a que el usuario recargue nada.
+//
+// IMPORTANTE: esto SOLO se dispara desde onInstalled/onStartup (ver el final del archivo), nunca
+// de forma incondicional al cargar este script. El service worker de una extensión MV3 se apaga
+// por inactividad y se reinicia (reejecutando todo este archivo) con cualquier evento normal —un
+// mensaje, un cambio de pestaña, etc.—, y eso NO deja huérfano a ningún content script: un content
+// script vive en el proceso de la pestaña, ajeno a que el service worker esté despierto o dormido.
+// Lo único que de verdad invalida un content script ya inyectado es que el propio código de la
+// extensión se reemplace (instalar, actualizar, o "Recargar" en chrome://extensions, que dispara
+// onInstalled igualmente) o que el navegador arranque de cero (onStartup). Barrer todas las
+// pestañas en cada despertar normal del worker sería trabajo repetido sin ningún caso real que
+// cubrir de más.
 async function reinjectOrphanedContentScripts() {
   let tabs;
   try {
@@ -136,4 +146,3 @@ function ensureContentScript(tabId) {
 
 chrome.runtime.onInstalled.addListener(() => reinjectOrphanedContentScripts());
 chrome.runtime.onStartup.addListener(() => reinjectOrphanedContentScripts());
-reinjectOrphanedContentScripts();
