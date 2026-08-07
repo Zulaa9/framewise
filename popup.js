@@ -166,7 +166,10 @@ async function refreshState() {
   syncSliderToSpeed(resp.playbackRate);
   q("toggleMute").textContent = resp.muted ? "🔇" : "🔊";
   q("toggleLoop").classList.toggle("active", !!resp.loop);
-  q("recordClip").textContent = resp.recording ? "⏹ Detener grabación" : "⏺ Grabar clip";
+  q("recordClip").textContent = resp.recording ? "⏹ Stop" : "⏺ Rec";
+  q("recordClip").title = resp.recording
+    ? "Detener la grabación y guardar el clip"
+    : "Grabar clip de vídeo (vuelve a pulsar para detener y guardar)";
   q("recordClip").classList.toggle("recording", !!resp.recording);
   renderPresets(resp.playbackRate);
   applyCapabilities(resp.capabilities, resp.loopBroken);

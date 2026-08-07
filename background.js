@@ -7,7 +7,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.type === "speedChanged" && sender.tab) {
     const label = Math.abs(msg.speed - 1) < 0.001 ? "" : formatBadge(msg.speed);
     chrome.action.setBadgeText({ tabId: sender.tab.id, text: label });
-    chrome.action.setBadgeBackgroundColor({ tabId: sender.tab.id, color: "#3a91d2" });
+    chrome.action.setBadgeBackgroundColor({ tabId: sender.tab.id, color: "#e8637a" });
     return;
   }
 
