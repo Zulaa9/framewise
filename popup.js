@@ -211,7 +211,10 @@ async function floatWindow() {
   }
 
   const hostWindow = await chrome.windows.getCurrent();
-  const pipWindow = await documentPictureInPicture.requestWindow({ width: 340, height: 700 });
+  // 580px ≈ alto real del panel con vídeo detectado (~568px) + un pequeño margen. Una ventana de
+  // Document PiP no tiene barra de título ni bordes que descontar — pedir más de la cuenta aquí
+  // (antes 700px) solo deja un hueco vacío debajo del panel.
+  const pipWindow = await documentPictureInPicture.requestWindow({ width: 340, height: 580 });
 
   pipWindow.document.title = "Framewise";
   // Un iframe con height:100% necesita que TODA la cadena de ancestros (html y body) tenga una
@@ -269,7 +272,10 @@ async function init() {
       const url = chrome.runtime.getURL(
         `popup.html?tabId=${activeTabId}&hostname=${encodeURIComponent(activeHostname || "")}`
       );
-      chrome.windows.create({ url, type: "popup", width: 340, height: 700, focused: true });
+      // 610px ≈ alto real del panel (~568px) más el margen para la barra de título de la ventana
+      // nativa (que sí cuenta dentro de "height" aquí, a diferencia de la ventana flotante). Antes
+      // pedía 700px, dejando un hueco vacío considerable debajo del panel.
+      chrome.windows.create({ url, type: "popup", width: 340, height: 610, focused: true });
       window.close();
     });
   }

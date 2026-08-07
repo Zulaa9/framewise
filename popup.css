@@ -41,9 +41,19 @@ body {
 /* Ventana desacoplada y flotante (Document PiP): ambas piden un contenido más ancho que el popup
    normal (ver floatWindow/detachBtn en popup.js) — un ancho fijo de 300px dejaría un hueco vacío
    lateral. El popup de la barra de herramientas nunca lleva esta clase, así que su tamaño natural
-   de 300px no cambia. */
+   de 300px no cambia. min-height:100% es un margen de seguridad: la altura pedida a la ventana ya
+   está ajustada al contenido real, pero la barra de título del sistema operativo descuenta un alto
+   distinto según la plataforma — así, si sobra algún píxel, se rellena con el fondo en vez de dejar
+   un hueco en blanco debajo del panel. */
 body.windowed {
   width: 100%;
+  min-height: 100%;
+}
+/* body necesita que TODA la cadena de ancestros tenga una altura explícita para que un
+   min-height:100% signifique algo — sin esto la regla de arriba no tendría efecto. Se limita a
+   este caso concreto (con :has()) para no tocar en nada el auto-ajuste de alto del popup normal. */
+html:has(body.windowed) {
+  height: 100%;
 }
 header {
   display: flex;
