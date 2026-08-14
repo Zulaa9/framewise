@@ -3,6 +3,7 @@ let recordingId = null;
 let currentScope = "global"; // "global" | hostname
 
 function q(id) { return document.getElementById(id); }
+function lang() { return currentLang(settings); }
 
 function populateForm() {
   q("fps").value = settings.fps;
@@ -16,20 +17,39 @@ function populateForm() {
   q("volumeMax").value = settings.volumeMax;
   q("volumeStep").value = settings.volumeStep;
   q("rememberVolumePerDomain").checked = settings.rememberVolumePerDomain;
+  applyLang();
+}
+
+// Vuelve a aplicar el idioma a todo lo estático (data-i18n*) y a todo lo que se genera desde JS
+// (listas de atajos, selector de ámbito, chips de preset, labels con "{n}") — se llama al cargar, al
+// pulsar el interruptor ES/EN, y cuando llega un cambio de idioma desde otro contexto (el popup).
+function applyLang() {
+  applyI18n(lang());
+  q("langSwitch").setAttribute("aria-label", T(lang(), "options.lang.label"));
+  q("langEs").classList.toggle("active", lang() === "es");
+  q("langEn").classList.toggle("active", lang() === "en");
+  updateCountPreviews();
   renderPresetChips();
   renderScopeSelect();
   renderShortcuts();
-  updateCountPreviews();
 }
 
-// Los propios campos "Nº de fotogramas" y "Segundos" citan su valor entre comillas en su propio
-// label (ver options.html) — se mantiene en vivo, tecla a tecla, para que nunca se vea desincronizado
-// del número que el campo tiene puesto en ese instante. Los labels de atajos (Retroceder {n}
-// fotogramas, etc.) se refrescan aparte, en renderShortcuts, porque solo esos dos campos alimentan
-// un "{n}" en las acciones (ver ACTION_LABEL_COUNT_SOURCE en settings.js).
+function setLang(newLang) {
+  if (settings.lang === newLang) return;
+  settings.lang = newLang;
+  saveSettings({ lang: newLang });
+  applyLang();
+}
+
+// Los propios campos "Nº de fotogramas" y "Segundos" citan su valor en su propio label — se
+// recompone entero (no un hueco relleno aparte) para que quede bien en cualquier idioma, y se
+// mantiene en vivo, tecla a tecla, para que nunca se vea desincronizado del número que el campo
+// tiene puesto en ese instante. Los labels de atajos (Retroceder {n} fotogramas, etc.) se
+// refrescan aparte, en renderShortcuts, porque solo esos dos campos alimentan un "{n}" en las
+// acciones (ver ACTION_LABEL_COUNT_SOURCE en settings.js).
 function updateCountPreviews() {
-  q("multiFrameCountPreview").textContent = settings.multiFrameCount;
-  q("seekSecondsPreview").textContent = settings.seekSeconds;
+  q("multiFrameCountLabel").textContent = T(lang(), "options.multiFrameCount.label", { n: settings.multiFrameCount });
+  q("seekSecondsLabel").textContent = T(lang(), "options.seekSeconds.label", { n: settings.seekSeconds });
 }
 
 // ---------- Presets de velocidad (chips añadir/quitar) ----------
@@ -47,7 +67,7 @@ function renderPresetChips() {
       text.textContent = `${label}x`;
       const removeBtn = document.createElement("button");
       removeBtn.textContent = "×";
-      removeBtn.title = `Quitar ${label}x`;
+      removeBtn.title = T(lang(), "options.presetChip.remove.title", { label });
       removeBtn.addEventListener("click", () => {
         settings.speedPresets = settings.speedPresets.filter((v) => Math.abs(v - p) > 0.0001);
         if (settings.speedPresets.length === 0) settings.speedPresets = [1];
@@ -66,11 +86,11 @@ function addPresetFromInput() {
   const input = q("newPresetValue");
   const value = parseFloat(input.value);
   if (isNaN(value)) {
-    alert("Escribe un número de velocidad válido, ej: 1.6");
+    alert(T(lang(), "options.alert.invalidSpeed"));
     return;
   }
   if (value < SPEED_MIN || value > SPEED_MAX) {
-    alert(`La velocidad debe estar entre ${SPEED_MIN}x y ${SPEED_MAX}x — es el rango real que admite la extensión.`);
+    alert(T(lang(), "options.alert.speedRange", { min: SPEED_MIN, max: SPEED_MAX }));
     return;
   }
   if (!settings.speedPresets.some((v) => Math.abs(v - value) < 0.0001)) {
@@ -124,7 +144,7 @@ function renderScopeSelect() {
   sel.innerHTML = "";
   const globalOpt = document.createElement("option");
   globalOpt.value = "global";
-  globalOpt.textContent = "Global (todos los sitios)";
+  globalOpt.textContent = T(lang(), "options.scopeSelect.global");
   sel.appendChild(globalOpt);
 
   Object.keys(settings.domainOverrides)
@@ -134,7 +154,8 @@ function renderScopeSelect() {
       opt.value = domain;
       const n = Object.keys(settings.domainOverrides[domain]).length;
       const paused = settings.pausedDomains && settings.pausedDomains[domain];
-      opt.textContent = `${domain}  (${n} override${n === 1 ? "" : "s"})${paused ? " · ⏸ pausado" : ""}`;
+      const overrideWord = T(lang(), n === 1 ? "options.override.singular" : "options.override.plural");
+      opt.textContent = `${domain}  (${n} ${overrideWord})${paused ? " · " + T(lang(), "options.scopeSelect.paused") : ""}`;
       sel.appendChild(opt);
     });
 
@@ -195,23 +216,21 @@ function renderShortcuts() {
     }
 
     keycap.className = "keycap" + (displayValue ? "" : " empty");
-    keycap.textContent = displayValue || "sin atajo";
+    keycap.textContent = displayValue || T(lang(), "options.keycap.empty");
 
     const tag = document.createElement("span");
     if (!isGlobal) {
       tag.className = isOverridden ? "override-tag" : "inherited-tag";
-      tag.textContent = isOverridden ? "personalizado aquí" : "heredado de global";
+      tag.textContent = T(lang(), isOverridden ? "options.tag.overridden" : "options.tag.inherited");
     }
 
     const recordBtn = document.createElement("button");
-    recordBtn.textContent = "Grabar";
+    recordBtn.textContent = T(lang(), "options.recordBtn");
     recordBtn.addEventListener("click", () => startRecording(id, keycap, recordBtn));
 
     const clearBtn = document.createElement("button");
-    clearBtn.textContent = "Borrar";
-    clearBtn.title = isGlobal
-      ? "Deja esta acción sin atajo global"
-      : "Desactiva esta acción solo en este dominio (sin heredar del global)";
+    clearBtn.textContent = T(lang(), "options.clearBtn");
+    clearBtn.title = T(lang(), isGlobal ? "options.clearBtn.title.global" : "options.clearBtn.title.domain");
     clearBtn.addEventListener("click", () => {
       if (isGlobal) {
         if (!settings.shortcuts) settings.shortcuts = {};
@@ -230,7 +249,7 @@ function renderShortcuts() {
 
     if (!isGlobal && isOverridden) {
       const inheritBtn = document.createElement("button");
-      inheritBtn.textContent = "Heredar de global";
+      inheritBtn.textContent = T(lang(), "options.inheritBtn");
       inheritBtn.addEventListener("click", () => {
         delete settings.domainOverrides[currentScope][id];
         renderShortcuts();
@@ -259,7 +278,7 @@ function effectiveShortcutsForScope(scope) {
 function startRecording(id, keycapEl, btnEl) {
   if (recordingId) return;
   recordingId = id;
-  keycapEl.textContent = "Pulsa una tecla…";
+  keycapEl.textContent = T(lang(), "options.keycap.recording");
   keycapEl.classList.add("recording");
   btnEl.disabled = true;
 
@@ -314,7 +333,7 @@ function warnIfClash(clash, combo) {
   if (clashRow) {
     const warn = document.createElement("div");
     warn.className = "warn";
-    warn.textContent = `⚠ "${combo}" ya estaba asignado aquí — considera cambiarlo`;
+    warn.textContent = T(lang(), "options.warn.clashHere", { combo });
     clashRow.appendChild(warn);
   }
 }
@@ -330,7 +349,7 @@ function warnIfDomainClash(id, combo) {
 
   const overrides = settings.domainOverrides[currentScope] || {};
   const clashIsOwnOverride = Object.prototype.hasOwnProperty.call(overrides, clashId) && overrides[clashId] !== "";
-  const source = clashIsOwnOverride ? "personalizado en este dominio" : "heredado del global";
+  const source = T(lang(), clashIsOwnOverride ? "options.warn.source.ownOverride" : "options.warn.source.inherited");
   const clashLabel = resolveActionLabel(settings, clashId);
 
   const clashRow = [...document.querySelectorAll(".shortcut-row")].find(
@@ -339,7 +358,7 @@ function warnIfDomainClash(id, combo) {
   if (clashRow) {
     const warn = document.createElement("div");
     warn.className = "warn";
-    warn.textContent = `⚠ "${combo}" ya está en uso aquí por "${clashLabel}" (${source}) — considera cambiarlo`;
+    warn.textContent = T(lang(), "options.warn.clashDomain", { combo, label: clashLabel, source });
     clashRow.appendChild(warn);
   }
 }
@@ -404,20 +423,21 @@ function normalizeImportedShortcuts(raw) {
 
 // Valida una configuración importada ANTES de aplicar nada: si algo tiene un tipo fundamentalmente
 // incorrecto en los campos clave (speedPresets, shortcuts/actions, domainOverrides, los mapas por
-// dominio), se rechaza entera con un mensaje claro en vez de dejar el ajuste actual a medio pisar.
-// Los campos ausentes (configuraciones antiguas) se rellenan con los valores por defecto; los
-// valores sueltos con tipo incorrecto dentro de una colección válida se descartan uno a uno en vez
-// de invalidar todo el archivo. "actions" (formato de antes de esta reestructuración) también se
+// dominio), se rechaza entera con un error (clave i18n + variables, no un string ya traducido — el
+// que llama decide en qué idioma mostrarlo) en vez de dejar el ajuste actual a medio pisar. Los
+// campos ausentes (configuraciones antiguas) se rellenan con los valores por defecto; los valores
+// sueltos con tipo incorrecto dentro de una colección válida se descartan uno a uno en vez de
+// invalidar todo el archivo. "actions" (formato de antes de esta reestructuración) también se
 // admite — ver normalizeImportedShortcuts.
 function validateImportedSettings(raw) {
   if (!isPlainObject(raw)) {
-    return { ok: false, error: "el archivo no contiene un objeto de configuración." };
+    return { ok: false, errorKey: "options.err.notObject" };
   }
 
   let speedPresets = DEFAULT_SETTINGS.speedPresets.slice();
   if (raw.speedPresets !== undefined) {
     if (!Array.isArray(raw.speedPresets)) {
-      return { ok: false, error: '"speedPresets" debería ser una lista de números.' };
+      return { ok: false, errorKey: "options.err.speedPresetsType" };
     }
     const valid = raw.speedPresets.filter(
       (v) => typeof v === "number" && isFinite(v) && v >= SPEED_MIN && v <= SPEED_MAX
@@ -426,17 +446,17 @@ function validateImportedSettings(raw) {
   }
 
   if (raw.shortcuts !== undefined && !isPlainObject(raw.shortcuts)) {
-    return { ok: false, error: '"shortcuts" debería ser un objeto (acción → atajo).' };
+    return { ok: false, errorKey: "options.err.shortcutsType" };
   }
   if (raw.actions !== undefined && !isPlainObject(raw.actions)) {
-    return { ok: false, error: '"actions" debería ser un objeto de acciones.' };
+    return { ok: false, errorKey: "options.err.actionsType" };
   }
   const shortcuts = normalizeImportedShortcuts(raw);
 
   let domainOverrides = {};
   if (raw.domainOverrides !== undefined) {
     if (!isPlainObject(raw.domainOverrides)) {
-      return { ok: false, error: '"domainOverrides" debería ser un objeto (dominio → atajos).' };
+      return { ok: false, errorKey: "options.err.domainOverridesType" };
     }
     Object.keys(raw.domainOverrides).forEach((domain) => {
       const entry = raw.domainOverrides[domain];
@@ -455,16 +475,21 @@ function validateImportedSettings(raw) {
   const domainMaps = {};
   for (const field of domainMapFields) {
     if (raw[field] !== undefined && !isPlainObject(raw[field])) {
-      return { ok: false, error: `"${field}" debería ser un objeto (dominio → valor).` };
+      return { ok: false, errorKey: "options.err.domainMapType", errorVars: { field } };
     }
     domainMaps[field] = isPlainObject(raw[field]) ? { ...raw[field] } : { ...DEFAULT_SETTINGS[field] };
   }
 
   const numberOr = (v, fallback) => (typeof v === "number" && isFinite(v) ? v : fallback);
   const boolOr = (v, fallback) => (typeof v === "boolean" ? v : fallback);
+  // El idioma importado se respeta si viene en el archivo; si no, se conserva el que ya tuviera
+  // esta instalación — importar una copia de seguridad no debería resetear la preferencia de
+  // idioma a la fuerza (a diferencia de "Restaurar todo", que sí es un reset explícito).
+  const lang = raw.lang === "en" || raw.lang === "es" ? raw.lang : (settings && settings.lang) || DEFAULT_SETTINGS.lang;
 
   const normalized = {
     ...DEFAULT_SETTINGS,
+    lang,
     fps: numberOr(raw.fps, DEFAULT_SETTINGS.fps),
     speedStep: numberOr(raw.speedStep, DEFAULT_SETTINGS.speedStep),
     seekSeconds: numberOr(raw.seekSeconds, DEFAULT_SETTINGS.seekSeconds),
@@ -494,35 +519,33 @@ function importSettingsFromFile(file) {
     try {
       raw = JSON.parse(reader.result);
     } catch (err) {
-      alert("Archivo inválido: " + err.message);
+      alert(T(lang(), "options.alert.importInvalidFile", { msg: err.message }));
       return;
     }
 
     const result = validateImportedSettings(raw);
     if (!result.ok) {
-      alert("No se pudo importar la configuración: " + result.error);
+      alert(T(lang(), "options.alert.importFailed", { error: T(lang(), result.errorKey, result.errorVars) }));
       return; // settings actual queda intacto, no se aplica nada parcial
     }
 
     settings = result.settings;
     currentScope = "global";
     populateForm();
-    alert('Configuración importada. Pulsa "Guardar cambios" para aplicarla.');
+    alert(T(lang(), "options.alert.importSuccess"));
   };
   reader.readAsText(file);
 }
 
 // Si algo cambia en storage desde otro contexto (el popup, otra pestaña de Opciones) mientras esta
 // sigue abierta, se refresca lo que se RENDERIZA a partir de settings (lista de atajos, selector de
-// ámbito, vistas previas de {n}) — nunca los campos de formulario en sí, para no pisarle a media
-// escritura algo que el usuario pueda estar editando en ese instante.
+// ámbito, vistas previas de {n}, idioma) — nunca los campos de formulario en sí, para no pisarle a
+// media escritura algo que el usuario pueda estar editando en ese instante.
 chrome.storage.onChanged.addListener((changes, area) => {
   if ((area !== "sync" && area !== "local") || !settings) return;
   loadSettings((s) => {
     settings = s;
-    renderScopeSelect();
-    renderShortcuts();
-    updateCountPreviews();
+    applyLang();
   });
 });
 
@@ -554,7 +577,7 @@ function disarmResetConfirm() {
   resetConfirmPending = false;
   clearTimeout(resetConfirmTimeout);
   const btn = q("resetAllBtn");
-  btn.textContent = "♻ Restaurar todo a valores por defecto";
+  btn.textContent = T(lang(), "options.resetAllBtn");
   btn.classList.remove("danger-confirm");
 }
 
@@ -562,7 +585,7 @@ function handleResetAllClick() {
   const btn = q("resetAllBtn");
   if (!resetConfirmPending) {
     resetConfirmPending = true;
-    btn.textContent = "⚠ Pulsa de nuevo para confirmar el borrado";
+    btn.textContent = T(lang(), "options.resetAllBtn.confirm");
     btn.classList.add("danger-confirm");
     resetConfirmTimeout = setTimeout(disarmResetConfirm, 5000);
     return;
@@ -574,11 +597,11 @@ function handleResetAllClick() {
       currentScope = "global";
       populateForm();
       const msg = q("savedMsg");
-      msg.textContent = "✔ Restaurado a valores por defecto";
+      msg.textContent = T(lang(), "options.savedMsg.reset");
       msg.classList.remove("hidden");
       setTimeout(() => {
         msg.classList.add("hidden");
-        msg.textContent = "✔ Guardado";
+        msg.textContent = T(lang(), "options.savedMsg");
       }, 2000);
     });
   });
@@ -597,6 +620,9 @@ function init() {
       populateForm();
     });
   });
+
+  q("langEs").addEventListener("click", () => setLang("es"));
+  q("langEn").addEventListener("click", () => setLang("en"));
 
   q("fpsPreset").addEventListener("change", (e) => {
     if (e.target.value) q("fps").value = e.target.value;
@@ -639,7 +665,7 @@ function init() {
   q("addDomainBtn").addEventListener("click", () => {
     const domain = normalizeDomainInput(q("newDomainInput").value);
     if (!domain) {
-      alert("Escribe un dominio válido, ej: www.crunchyroll.com");
+      alert(T(lang(), "options.alert.invalidDomain"));
       return;
     }
     if (!settings.domainOverrides[domain]) settings.domainOverrides[domain] = {};
@@ -650,7 +676,7 @@ function init() {
 
   q("removeDomainBtn").addEventListener("click", () => {
     if (currentScope === "global") return;
-    if (!confirm(`¿Eliminar todos los overrides de "${currentScope}"?`)) return;
+    if (!confirm(T(lang(), "options.confirm.removeDomain", { domain: currentScope }))) return;
     delete settings.domainOverrides[currentScope];
     currentScope = "global";
     renderScopeSelect();

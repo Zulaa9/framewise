@@ -4,11 +4,25 @@ let activeHostname = null;
 
 function q(id) { return document.getElementById(id); }
 
-// Títulos de seekBack/seekForward incluyen el nº de segundos real configurado — no un "N" fijo en
+// Idioma activo — se recalcula en cada loadSettings/onChanged, nunca se guarda como variable
+// aparte que pudiera desincronizarse de settings.lang.
+function lang() { return currentLang(settings); }
+
+// Vuelve a aplicar el idioma a todo lo estático (data-i18n*) y a los textos que popup.js escribe a
+// mano (títulos con {n}, textContent dinámico según estado). Se llama al cargar, al cambiar de
+// idioma desde el interruptor, y cuando llega un cambio de storage desde otro contexto.
+function applyLang() {
+  applyI18n(lang());
+  applyDynamicTitles();
+  applyPausedUi();
+  q("langToggle").textContent = lang() === "en" ? "EN" : "ES";
+}
+
+// Títulos de seekBack/seekForward incluyen el nº de segundos real configurado — no un valor fijo en
 // el HTML — así que se rellenan aquí en vez de quedar escritos en popup.html.
 function applyDynamicTitles() {
-  q("seekBack").title = `Retroceder ${settings.seekSeconds} segundos`;
-  q("seekForward").title = `Avanzar ${settings.seekSeconds} segundos`;
+  q("seekBack").title = T(lang(), "popup.seekBack.title", { n: settings.seekSeconds });
+  q("seekForward").title = T(lang(), "popup.seekForward.title", { n: settings.seekSeconds });
 }
 
 // Botón de pausa rápida: desactiva solo los listeners de teclado/rueda de content.js en ESTE
@@ -25,9 +39,7 @@ function applyPausedUi() {
   btn.classList.remove("hidden");
   const isPaused = !!(settings.pausedDomains && settings.pausedDomains[activeHostname]);
   btn.textContent = isPaused ? "▶" : "⏸";
-  btn.title = isPaused
-    ? "Reactivar los atajos de teclado de Framewise en este sitio"
-    : "Desactivar los atajos de teclado de Framewise en este sitio (por si chocan con los del sitio)";
+  btn.title = T(lang(), isPaused ? "popup.pauseBtn.on" : "popup.pauseBtn.off");
   btn.classList.toggle("paused-active", isPaused);
   hint.classList.toggle("hidden", !isPaused);
 }
@@ -120,40 +132,30 @@ function renderPresets(currentSpeed) {
 
 // Deshabilita en el popup lo que ya sabemos con certeza que no va a funcionar en este vídeo/sitio
 // (capacidad del navegador, no cambia), en vez de dejar que el usuario lo descubra al pulsar.
-function setButtonAvailability(id, available, reasonIfNot) {
+// availableTitle/reasonIfNot se pasan siempre explícitos (no se cachean en el propio botón) para que
+// un cambio de idioma en caliente no deje un título de un idioma antiguo colgado indefinidamente.
+function setButtonAvailability(id, available, availableTitle, reasonIfNot) {
   const btn = q(id);
-  if (btn.dataset.defaultTitle === undefined) btn.dataset.defaultTitle = btn.title || "";
   btn.disabled = !available;
-  btn.title = available ? btn.dataset.defaultTitle : reasonIfNot;
+  btn.title = available ? availableTitle : reasonIfNot;
 }
 
 // Para cosas que dependen del estado del buffer (cambia con el tiempo, no se puede "deshabilitar
 // para siempre"): se deja pulsable, solo se avisa con un estilo de advertencia si ya falló antes.
-function setButtonWarning(id, warn, reasonIfWarn) {
+function setButtonWarning(id, warn, normalTitle, reasonIfWarn) {
   const btn = q(id);
-  if (btn.dataset.defaultTitle === undefined) btn.dataset.defaultTitle = btn.title || "";
   btn.classList.toggle("warn", warn);
-  btn.title = warn ? reasonIfWarn : btn.dataset.defaultTitle;
+  btn.title = warn ? reasonIfWarn : normalTitle;
 }
 
 function applyCapabilities(caps, loopBroken) {
   caps = caps || { pip: true, screenshot: true, frameAudio: true, recordClip: true };
-  setButtonAvailability("togglePip", caps.pip, "Picture-in-Picture no disponible en este vídeo");
-  setButtonAvailability(
-    "screenshot",
-    caps.screenshot,
-    "No se puede capturar: vídeo protegido (DRM) — el navegador bloquea leer sus fotogramas"
-  );
-  setButtonAvailability(
-    "recordClip",
-    caps.recordClip,
-    "Grabación no disponible en este vídeo (navegador sin soporte de captureStream)"
-  );
-  setButtonWarning(
-    "toggleLoop",
-    loopBroken,
-    "El bucle falló antes en este vídeo (el inicio ya no está cargado) — puedes reintentarlo"
-  );
+  setButtonAvailability("togglePip", caps.pip, T(lang(), "popup.togglePip.title"), T(lang(), "popup.cap.pip"));
+  setButtonAvailability("screenshot", caps.screenshot, T(lang(), "popup.screenshot.title"), T(lang(), "popup.cap.screenshot"));
+  // recordClip ya tiene su título idle/grabando puesto justo antes de llamar aquí (ver refreshState)
+  // — si está disponible, se respeta tal cual; si no, se sustituye por el motivo.
+  setButtonAvailability("recordClip", caps.recordClip, q("recordClip").title, T(lang(), "popup.cap.recordClip"));
+  setButtonWarning("toggleLoop", loopBroken, T(lang(), "popup.toggleLoop.title"), T(lang(), "popup.cap.loopBroken"));
 }
 
 // Mientras el popup está abierto sin más, refresca solo el tiempo/estado de reproducción (nada
@@ -161,7 +163,7 @@ function applyCapabilities(caps, loopBroken) {
 async function tickTime() {
   const resp = await sendToTab({ type: "getState" });
   if (!resp || !resp.ok) return;
-  q("stateBadge").textContent = resp.paused ? "⏸ Pausa" : "▶ Reproduciendo";
+  q("stateBadge").textContent = T(lang(), resp.paused ? "popup.state.paused" : "popup.state.playing");
   q("timeBadge").textContent = `${formatTime(resp.currentTime)} / ${formatTime(resp.duration)}`;
 }
 
@@ -187,17 +189,15 @@ async function refreshState() {
   q("noVideo").classList.add("hidden");
   q("controls").classList.remove("hidden");
 
-  q("stateBadge").textContent = resp.paused ? "⏸ Pausa" : "▶ Reproduciendo";
+  q("stateBadge").textContent = T(lang(), resp.paused ? "popup.state.paused" : "popup.state.playing");
   q("timeBadge").textContent = `${formatTime(resp.currentTime)} / ${formatTime(resp.duration)}`;
   q("speedBadge").textContent = `${resp.playbackRate.toFixed(2)}x`;
   setupSlider();
   syncSliderToSpeed(resp.playbackRate);
   q("toggleMute").textContent = resp.muted ? "🔇" : "🔊";
   q("toggleLoop").classList.toggle("active", !!resp.loop);
-  q("recordClip").textContent = resp.recording ? "⏹ Stop" : "⏺ Rec";
-  q("recordClip").title = resp.recording
-    ? "Detener la grabación y guardar el clip"
-    : "Grabar clip de vídeo (vuelve a pulsar para detener y guardar)";
+  q("recordClip").textContent = T(lang(), resp.recording ? "popup.recordClip.label.recording" : "popup.recordClip.label.idle");
+  q("recordClip").title = T(lang(), resp.recording ? "popup.recordClip.title.recording" : "popup.recordClip.title.idle");
   q("recordClip").classList.toggle("recording", !!resp.recording);
   renderPresets(resp.playbackRate);
   applyCapabilities(resp.capabilities, resp.loopBroken);
@@ -206,14 +206,14 @@ async function refreshState() {
   q("volumeSlider").max = volumeMax;
   q("volumeSlider").value = resp.volume;
   q("volumeBadge").textContent = `${resp.volume}%`;
-  q("volumeMaxHint").textContent = `(hasta ${volumeMax}% amplificado)`;
+  q("volumeMaxHint").textContent = T(lang(), "popup.volume.hint", { max: volumeMax });
 
   if (resp.domainFps) {
-    q("fpsInfo").textContent = `${resp.domainFps.toFixed(3)} fps (fijado para este sitio)`;
+    q("fpsInfo").textContent = T(lang(), "popup.fpsInfo.fixed", { fps: resp.domainFps.toFixed(3) });
   } else if (resp.detectedFps) {
-    q("fpsInfo").textContent = `~${resp.detectedFps.toFixed(3)} fps (detectado)`;
+    q("fpsInfo").textContent = T(lang(), "popup.fpsInfo.detected", { fps: resp.detectedFps.toFixed(3) });
   } else {
-    q("fpsInfo").textContent = `usando global (${settings.fps} fps)`;
+    q("fpsInfo").textContent = T(lang(), "popup.fpsInfo.global", { fps: settings.fps });
   }
 }
 
@@ -234,7 +234,7 @@ let isDetachedWindow = false;
 // vea la flotante.
 async function floatWindow() {
   if (!("documentPictureInPicture" in window)) {
-    alert("Tu navegador no soporta ventanas superpuestas (Document Picture-in-Picture). Hace falta Chrome/Edge 116 o superior.");
+    alert(T(lang(), "popup.floatUnsupported"));
     return;
   }
 
@@ -310,8 +310,7 @@ async function init() {
 
   loadSettings((s) => {
     settings = s;
-    applyDynamicTitles();
-    applyPausedUi();
+    applyLang();
     refreshState();
     startTimeTicker();
   });
@@ -325,8 +324,7 @@ async function init() {
     if ((area !== "sync" && area !== "local") || !settings) return;
     loadSettings((s) => {
       settings = s;
-      applyDynamicTitles();
-      applyPausedUi();
+      applyLang();
     });
   });
 
@@ -336,6 +334,13 @@ async function init() {
     settings.pausedDomains[activeHostname] = !settings.pausedDomains[activeHostname];
     saveSettings({ pausedDomains: settings.pausedDomains });
     applyPausedUi();
+  });
+
+  q("langToggle").addEventListener("click", () => {
+    settings.lang = lang() === "en" ? "es" : "en";
+    saveSettings({ lang: settings.lang });
+    applyLang();
+    refreshState();
   });
 
   bind("frameBack", () => sendToTab({ type: "runAction", id: "frameBack" }));

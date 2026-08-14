@@ -239,7 +239,7 @@
     } else {
       const gain = ensureAudioGraph(video);
       if (!gain) {
-        if (!silent) showOverlay("⚠ El volumen de la extensión no está disponible en este vídeo");
+        if (!silent) showOverlay(T(currentLang(settings), "overlay.volumeUnavailable"));
         return;
       }
       if (video.__fscAudioCtx && video.__fscAudioCtx.state === "suspended") {
@@ -249,7 +249,7 @@
     }
 
     if (!silent) {
-      showOverlay(`🔊 Volumen (extensión): ${percent}%`);
+      showOverlay(T(currentLang(settings), "overlay.volume", { percent }));
       persistDomainVolume(percent);
     }
   }
@@ -334,11 +334,11 @@
 
   function onNativePause(e) {
     if (e.target.tagName !== "VIDEO" || Date.now() < suppressGenericOverlayUntil) return;
-    showOverlay(`⏸ Pausa · ${formatTime(e.target.currentTime)}`);
+    showOverlay(T(currentLang(settings), "overlay.nativePause", { time: formatTime(e.target.currentTime) }));
   }
   function onNativePlay(e) {
     if (e.target.tagName !== "VIDEO" || Date.now() < suppressGenericOverlayUntil) return;
-    showOverlay(`▶ ${formatTime(e.target.currentTime)}`);
+    showOverlay(T(currentLang(settings), "overlay.nativePlay", { time: formatTime(e.target.currentTime) }));
   }
   document.addEventListener("pause", onNativePause, true);
   document.addEventListener("play", onNativePlay, true);
@@ -427,7 +427,7 @@
 
     const loadingHint = setTimeout(() => {
       suppressGenericOverlayUntil = Date.now() + 600;
-      showOverlay("⏳ Cargando ese tramo…");
+      showOverlay(T(currentLang(settings), "overlay.loadingSegment"));
     }, 450);
 
     const ok = await waitForSeek(video, SEEK_TIMEOUT_MS);
@@ -444,7 +444,7 @@
       consecutiveSeekStalls = 0;
       stopAllRepeats();
       suppressGenericOverlayUntil = Date.now() + 500;
-      showOverlay("⚠ No se puede retroceder más allá de lo cargado en este punto");
+      showOverlay(T(currentLang(settings), "overlay.seekBlocked"));
     }
     return { ok: false, time: before };
   }
@@ -489,7 +489,12 @@
       // Si el salto falló, seekWithGuard ya dejó su propio aviso en pantalla — no lo tapamos
       // con el overlay normal de "±N frame".
       if (!seekFailed) {
-        showOverlay(`${frames > 0 ? "▶" : "◀"} ${frames > 0 ? "+" : ""}${frames} fotograma  ·  ${formatTime(video.currentTime)}`);
+        showOverlay(T(currentLang(settings), "overlay.frameStep", {
+          dir: frames > 0 ? "▶" : "◀",
+          sign: frames > 0 ? "+" : "",
+          frames,
+          time: formatTime(video.currentTime)
+        }));
       }
     } finally {
       frameStepBusy = false;
@@ -499,7 +504,7 @@
   function setSpeed(video, speed) {
     speed = Math.max(SPEED_MIN, Math.min(SPEED_MAX, speed));
     video.playbackRate = speed;
-    showOverlay(`Velocidad: ${speed.toFixed(2)}x`);
+    showOverlay(T(currentLang(settings), "overlay.speed", { speed: speed.toFixed(2) }));
     persistDomainSpeed(speed);
     try {
       chrome.runtime.sendMessage({ type: "speedChanged", speed });
@@ -532,7 +537,11 @@
     try {
       const target = clampTime(video, video.currentTime + secs);
       await seekWithGuard(video, target);
-      showOverlay(`${secs > 0 ? "⏩" : "⏪"} ${Math.abs(secs)}s  ·  ${formatTime(video.currentTime)}`);
+      showOverlay(T(currentLang(settings), "overlay.seek", {
+        icon: secs > 0 ? "⏩" : "⏪",
+        secs: Math.abs(secs),
+        time: formatTime(video.currentTime)
+      }));
     } finally {
       seekBusy = false;
     }
@@ -555,7 +564,7 @@
       v.__fscLoopBroken = false;
       try { await v.play(); } catch (err) {}
       suppressGenericOverlayUntil = Date.now() + 300;
-      showOverlay("🔁 Bucle: reiniciado desde el principio");
+      showOverlay(T(currentLang(settings), "overlay.loopRestarted"));
     } else {
       v.__fscLoopBroken = true;
       v.__fscManualLoop = false;
@@ -567,12 +576,12 @@
     video.loop = false; // nunca dejamos que el navegador lo gestione internamente, ver nota arriba
     video.__fscManualLoop = !video.__fscManualLoop;
     if (video.__fscManualLoop) video.__fscLoopBroken = false;
-    showOverlay(video.__fscManualLoop ? "🔁 Bucle activado" : "🔁 Bucle desactivado");
+    showOverlay(T(currentLang(settings), video.__fscManualLoop ? "overlay.loopOn" : "overlay.loopOff"));
   }
 
   function toggleMute(video) {
     video.muted = !video.muted;
-    showOverlay(video.muted ? "🔇 Silenciado" : "🔊 Audio activado");
+    showOverlay(T(currentLang(settings), video.muted ? "overlay.muted" : "overlay.unmuted"));
   }
 
   async function togglePip(video) {
@@ -580,7 +589,7 @@
       if (document.pictureInPictureElement) await document.exitPictureInPicture();
       else await video.requestPictureInPicture();
     } catch (err) {
-      showOverlay("⚠ Picture-in-Picture no disponible");
+      showOverlay(T(currentLang(settings), "overlay.pipUnavailable"));
     }
   }
 
@@ -600,9 +609,9 @@
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 5000);
       }, "image/png");
-      showOverlay("📸 Fotograma capturado");
+      showOverlay(T(currentLang(settings), "overlay.frameCaptured"));
     } catch (err) {
-      showOverlay("⚠ No se pudo capturar (¿vídeo protegido/DRM?)");
+      showOverlay(T(currentLang(settings), "overlay.captureFailed"));
     }
   }
 
@@ -620,7 +629,7 @@
 
   function saveRecording(chunks, mimeType, startTime) {
     if (!chunks.length) {
-      showOverlay("⚠ La grabación quedó vacía — no se guardó nada");
+      showOverlay(T(currentLang(settings), "overlay.recordingEmpty"));
       return;
     }
     const blob = new Blob(chunks, { type: mimeType || "video/webm" });
@@ -632,7 +641,7 @@
     a.click();
     a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 5000);
-    showOverlay("💾 Clip guardado");
+    showOverlay(T(currentLang(settings), "overlay.clipSaved"));
   }
 
   function startRecording(video) {
@@ -650,7 +659,7 @@
       mediaRecorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
     } catch (err) {
       mediaRecorder = null;
-      showOverlay("⚠ No se puede grabar este vídeo (¿protegido por DRM o sin soporte del navegador?)");
+      showOverlay(T(currentLang(settings), "overlay.recordingFailed"));
       return;
     }
 
@@ -667,12 +676,12 @@
     });
 
     mediaRecorder.start();
-    showOverlay("⏺ Grabando clip…");
+    showOverlay(T(currentLang(settings), "overlay.recording"));
   }
 
   function stopRecording() {
     if (!mediaRecorder || mediaRecorder.state === "inactive") return;
-    showOverlay("⏹ Deteniendo grabación…");
+    showOverlay(T(currentLang(settings), "overlay.stoppingRecording"));
     mediaRecorder.stop();
   }
 
@@ -742,7 +751,7 @@
     video.currentTime = clampTime(video, Math.round(video.currentTime / frameLen) * frameLen);
     if (typeof priorRate === "number") video.playbackRate = priorRate;
     suppressGenericOverlayUntil = Date.now() + 250;
-    showOverlay(`▶ fotograma · ${formatTime(video.currentTime)}`);
+    showOverlay(T(currentLang(settings), "overlay.holdFrame", { time: formatTime(video.currentTime) }));
   }
 
   function stopAllRepeats() {
@@ -904,7 +913,7 @@
     stopVideoPicker();
     const video = findVideoNear(target);
     if (!video) {
-      showOverlay("⚠ No se encontró ningún <video> ahí — prueba a marcar directamente sobre la imagen del vídeo");
+      showOverlay(T(currentLang(settings), "overlay.noVideoAtPoint"));
       notifyPickerDone();
       return;
     }
@@ -913,7 +922,7 @@
     notifiedVideos.delete(video); // fuerza a re-avisar aunque ya estuviera notificado
     notifyVideoFound(video);
     suppressGenericOverlayUntil = Date.now() + 400;
-    showOverlay("✅ Vídeo marcado — vuelve a abrir el panel de la extensión");
+    showOverlay(T(currentLang(settings), "overlay.videoPicked"));
     notifyPickerDone();
   }
 
@@ -935,7 +944,7 @@
     if (!el) {
       el = document.createElement("div");
       el.id = "__fsc_picker_banner__";
-      el.textContent = "🎯 Haz clic sobre el vídeo que quieres controlar (Esc para cancelar)";
+      el.textContent = T(currentLang(settings), "overlay.pickerBanner");
       document.body.appendChild(el);
     }
     const fsEl = document.fullscreenElement;

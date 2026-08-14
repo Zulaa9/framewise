@@ -130,7 +130,7 @@ function ensureContentScript(tabId) {
       try {
         await chrome.scripting.executeScript({
           target: { tabId, allFrames: true },
-          files: ["settings.js", "content.js"]
+          files: ["i18n.js", "settings.js", "content.js"]
         });
         await chrome.scripting.insertCSS({
           target: { tabId, allFrames: true },

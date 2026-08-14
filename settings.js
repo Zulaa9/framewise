@@ -1,4 +1,5 @@
-// Configuración por defecto y utilidades compartidas por content.js, popup.js, options.js y background.js.
+// Configuración por defecto y utilidades compartidas por content.js, popup.js, options.js y
+// background.js. Depende de i18n.js (T/currentLang/STRINGS) — debe cargarse después de él.
 
 // Rango real de velocidad admitido por el reproductor (ver setSpeed en content.js). Vive aquí para
 // que options.js pueda validar presets manuales contra el mismo límite sin duplicar los números.
@@ -15,8 +16,11 @@ const SPEED_MAX = 16;
 // "label", "repeatable" y el shortcut de fábrica; lo único que persiste por usuario es el shortcut
 // realmente elegido (ver SYNC_DEFAULTS.shortcuts más abajo), y solo cuando difiere de este default.
 //
-// "{n}" en un label se sustituye en tiempo real por el valor configurado real (multiFrameCount o
-// seekSeconds, según la acción — ver ACTION_LABEL_COUNT_SOURCE/resolveActionLabel más abajo).
+// "labelKey" apunta a STRINGS[lang][labelKey] en i18n.js (que debe cargarse antes que este archivo)
+// — así el label sale siempre traducido al idioma activo (settings.lang, ver SYNC_DEFAULTS más
+// abajo), nunca en un solo idioma fijo. "{n}" dentro de esa cadena se sustituye en tiempo real por
+// el valor configurado real (multiFrameCount o seekSeconds, según la acción — ver
+// ACTION_LABEL_COUNT_SOURCE/resolveActionLabel más abajo).
 //
 // Shortcuts de fábrica: todos los que antes eran una sola tecla van con Ctrl, para reducir el
 // riesgo de chocar con los atajos nativos del propio sitio (la mayoría de páginas evita enlazar
@@ -33,24 +37,24 @@ const SPEED_MAX = 16;
 // AltGr se reporta como ctrlKey+altKey a la vez, indistinguible de un Ctrl+Alt real); Ctrl+Flecha
 // sin Shift (en macOS son los atajos de Mission Control/Spaces, a nivel de sistema operativo).
 const ACTION_DEFS = {
-  frameBack:          { label: "Retroceder 1 fotograma",              shortcut: "Ctrl+,",               repeatable: true },
-  frameForward:        { label: "Avanzar 1 fotograma",                 shortcut: "Ctrl+.",               repeatable: true },
-  frameBackMulti:      { label: "Retroceder {n} fotogramas",           shortcut: "Ctrl+Shift+,",         repeatable: true },
-  frameForwardMulti:   { label: "Avanzar {n} fotogramas",              shortcut: "Ctrl+Shift+.",         repeatable: true },
-  speedUp:             { label: "Subir velocidad (siguiente preset)", shortcut: "Ctrl+]",               repeatable: false },
-  speedDown:           { label: "Bajar velocidad (preset anterior)",  shortcut: "Ctrl+[",               repeatable: false },
-  speedReset:          { label: "Velocidad normal (1x)",              shortcut: "Ctrl+\\",              repeatable: false },
-  togglePlay:          { label: "Play / Pausa",                       shortcut: "k",                    repeatable: false },
-  seekBack:            { label: "Retroceder {n} segundos",            shortcut: "j",                    repeatable: true },
-  seekForward:          { label: "Avanzar {n} segundos",               shortcut: "l",                    repeatable: true },
-  toggleLoop:          { label: "Activar/desactivar bucle",           shortcut: "Ctrl+Shift+L",         repeatable: false },
-  togglePip:           { label: "Picture-in-Picture",                 shortcut: "Ctrl+I",               repeatable: false },
-  toggleMute:          { label: "Silenciar / Activar audio",          shortcut: "Ctrl+M",               repeatable: false },
-  screenshot:          { label: "Capturar fotograma actual (PNG)",    shortcut: "Ctrl+Shift+F",         repeatable: false },
-  recordClip:          { label: "Grabar / detener clip de vídeo",     shortcut: "Ctrl+Shift+G",         repeatable: false },
-  volumeUp:            { label: "Subir volumen",                      shortcut: "Ctrl+Shift+ArrowUp",   repeatable: true },
-  volumeDown:          { label: "Bajar volumen",                      shortcut: "Ctrl+Shift+ArrowDown", repeatable: true },
-  volumeReset:         { label: "Volumen normal (100%)",              shortcut: "Ctrl+Shift+\\",        repeatable: false }
+  frameBack:          { labelKey: "action.frameBack",         shortcut: "Ctrl+,",               repeatable: true },
+  frameForward:        { labelKey: "action.frameForward",      shortcut: "Ctrl+.",               repeatable: true },
+  frameBackMulti:      { labelKey: "action.frameBackMulti",    shortcut: "Ctrl+Shift+,",         repeatable: true },
+  frameForwardMulti:   { labelKey: "action.frameForwardMulti", shortcut: "Ctrl+Shift+.",         repeatable: true },
+  speedUp:             { labelKey: "action.speedUp",           shortcut: "Ctrl+]",               repeatable: false },
+  speedDown:           { labelKey: "action.speedDown",         shortcut: "Ctrl+[",               repeatable: false },
+  speedReset:          { labelKey: "action.speedReset",        shortcut: "Ctrl+\\",              repeatable: false },
+  togglePlay:          { labelKey: "action.togglePlay",        shortcut: "k",                    repeatable: false },
+  seekBack:            { labelKey: "action.seekBack",          shortcut: "j",                    repeatable: true },
+  seekForward:          { labelKey: "action.seekForward",       shortcut: "l",                    repeatable: true },
+  toggleLoop:          { labelKey: "action.toggleLoop",        shortcut: "Ctrl+Shift+L",         repeatable: false },
+  togglePip:           { labelKey: "action.togglePip",         shortcut: "Ctrl+I",               repeatable: false },
+  toggleMute:          { labelKey: "action.toggleMute",        shortcut: "Ctrl+M",               repeatable: false },
+  screenshot:          { labelKey: "action.screenshot",        shortcut: "Ctrl+Shift+F",         repeatable: false },
+  recordClip:          { labelKey: "action.recordClip",        shortcut: "Ctrl+Shift+G",         repeatable: false },
+  volumeUp:            { labelKey: "action.volumeUp",          shortcut: "Ctrl+Shift+ArrowUp",   repeatable: true },
+  volumeDown:          { labelKey: "action.volumeDown",        shortcut: "Ctrl+Shift+ArrowDown", repeatable: true },
+  volumeReset:         { labelKey: "action.volumeReset",       shortcut: "Ctrl+Shift+\\",        repeatable: false }
 };
 
 // Qué ajuste numérico rellena el "{n}" del label de cada acción.
@@ -97,6 +101,10 @@ const FORMER_DEFAULT_SHORTCUTS = {
 // que se acumule solo con el uso — encaja con el criterio de qué va a sync, no con el de qué va a
 // local (ver LOCAL_DEFAULTS más abajo).
 const SYNC_DEFAULTS = {
+  // null = "no elegido a mano todavía" — currentLang() (i18n.js) sigue entonces el idioma del
+  // navegador en cada momento. Se fija a "es" o "en" en cuanto el usuario toca el interruptor de
+  // idioma del popup o de Opciones, y a partir de ahí ya no se mueve solo.
+  lang: null,
   fps: 23.976,
   speedStep: 0.25,
   seekSeconds: 5,
@@ -273,13 +281,14 @@ function effectiveShortcutFor(settings, domain, actionId) {
   return effectiveGlobalShortcut(settings, actionId);
 }
 
-// Devuelve el label de una acción listo para mostrar, con "{n}" ya sustituido por el valor real
-// configurado — así la interfaz nunca muestra la letra N suelta, siempre el número vigente. Lee el
-// label siempre de ACTION_DEFS (código actual), nunca de algo persistido.
+// Devuelve el label de una acción listo para mostrar, ya traducido al idioma activo y con "{n}"
+// sustituido por el valor real configurado — así la interfaz nunca muestra la letra N suelta,
+// siempre el número vigente. Lee el texto siempre de i18n.js vía ACTION_DEFS[id].labelKey (código
+// actual), nunca de algo persistido.
 function resolveActionLabel(settings, actionId) {
   const def = ACTION_DEFS[actionId];
   if (!def) return "";
   const countKey = ACTION_LABEL_COUNT_SOURCE[actionId];
-  if (!countKey) return def.label;
-  return def.label.replace("{n}", settings[countKey]);
+  const vars = countKey ? { n: settings[countKey] } : undefined;
+  return T(currentLang(settings), def.labelKey, vars);
 }

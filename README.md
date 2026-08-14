@@ -10,6 +10,15 @@ Framewise started as a fix for one specific gap — Crunchyroll's player has no 
 
 It has no build step and no external dependencies: plain JavaScript, loaded directly via `content_scripts` and standard `<script>` tags.
 
+## Languages
+
+The interface (popup, Options page, on-screen overlay) is available in Spanish and English. By
+default it follows the browser's own UI language (`chrome.i18n.getUILanguage()`, checked live —
+English if it changes to it, Spanish for anything else) until you switch it by hand from the ES/EN
+toggle in the popup header or the Options page; from then on it stays pinned to that choice, synced
+across devices like any other setting. See `i18n.js` for the string dictionary and `ACTION_DEFS` in
+`settings.js` for how action labels resolve through it.
+
 ## Features
 
 ### Frame-by-frame navigation
@@ -124,6 +133,7 @@ Manifest V3, no bundler, no runtime dependencies.
 | File | Role |
 | --- | --- |
 | `manifest.json` | Extension manifest |
+| `i18n.js` | es/en string dictionary and translation helpers (`T`, `applyI18n`) — loaded before everything else |
 | `settings.js` | Default settings and shared utilities (loaded by content, popup and options scripts) |
 | `content.js` | Core logic — runs once per frame of every page: video control, shortcuts, overlay, FPS/capability detection |
 | `background.js` | Service worker — toolbar badge, cross-frame video resolution, orphaned content-script recovery |

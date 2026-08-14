@@ -76,6 +76,12 @@ header button {
   border-radius: 6px;
 }
 header button:hover { background: color-mix(in srgb, var(--color-ink) 8%, transparent); }
+header button.lang-toggle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 2px 5px;
+}
 /* Mismo lenguaje visual que .buttons-row button.warn (ámbar = "algo está desactivado, ten
    cuidado"), aplicado aquí al botón de pausa cuando los atajos están apagados en este sitio. */
 header button#pauseBtn.paused-active {

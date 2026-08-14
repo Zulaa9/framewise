@@ -2,22 +2,28 @@
 <html lang="es">
 <head>
   <meta charset="utf-8" />
-  <title>Framewise — Opciones</title>
+  <title data-i18n="options.title">Framewise — Opciones</title>
   <link rel="stylesheet" href="options.css" />
 </head>
 <body>
-  <h1><img src="icons/icon48.png" alt="" class="logo-mark" /> Framewise</h1>
+  <div class="page-head">
+    <h1><img src="icons/icon48.png" alt="" class="logo-mark" /> Framewise</h1>
+    <div class="lang-switch" id="langSwitch" role="group" aria-label="Language">
+      <button type="button" id="langEs" class="lang-opt">ES</button>
+      <button type="button" id="langEn" class="lang-opt">EN</button>
+    </div>
+  </div>
 
   <section class="card">
-    <h2>Fotogramas</h2>
+    <h2 data-i18n="options.frames.h2">Fotogramas</h2>
     <div class="field">
-      <label for="fps">FPS global (para el paso de 1 fotograma, cuando el sitio no tiene FPS propio ni se detecta en vivo)</label>
+      <label for="fps" data-i18n="options.fps.label">FPS global (para el paso de 1 fotograma, cuando el sitio no tiene FPS propio ni se detecta en vivo)</label>
       <div class="inline">
         <input type="number" id="fps" step="0.001" min="1" max="240" />
         <select id="fpsPreset">
-          <option value="">Presets comunes…</option>
-          <option value="23.976">23.976 (cine/anime NTSC)</option>
-          <option value="24">24 (cine)</option>
+          <option value="" data-i18n="options.fpsPreset.placeholder">Presets comunes…</option>
+          <option value="23.976" data-i18n="options.fpsPreset.23976">23.976 (cine/anime NTSC)</option>
+          <option value="24" data-i18n="options.fpsPreset.24">24 (cine)</option>
           <option value="25">25 (PAL)</option>
           <option value="29.97">29.97 (NTSC)</option>
           <option value="30">30</option>
@@ -28,137 +34,124 @@
       </div>
     </div>
     <div class="field">
-      <label for="multiFrameCount">Nº de fotogramas para "Retroceder/Avanzar <span id="multiFrameCountPreview">N</span> fotogramas"</label>
+      <label for="multiFrameCount" id="multiFrameCountLabel"></label>
       <input type="number" id="multiFrameCount" min="1" max="500" />
     </div>
   </section>
 
   <section class="card">
-    <h2>Velocidad</h2>
+    <h2 data-i18n="options.speed.h2">Velocidad</h2>
     <div class="field">
-      <label for="speedStep">Incremento cuando no hay siguiente preset (x)</label>
+      <label for="speedStep" data-i18n="options.speedStep.label">Incremento cuando no hay siguiente preset (x)</label>
       <input type="number" id="speedStep" step="0.05" min="0.01" max="2" />
     </div>
     <div class="field">
-      <label>Presets de velocidad (los botones rápidos del popup)</label>
+      <label data-i18n="options.speedPresets.label">Presets de velocidad (los botones rápidos del popup)</label>
 
       <div class="preset-quick">
-        <button id="presetStepDown" title="Quita el más alto de la escala de 0.25 (ignora valores añadidos a mano)">－0.25</button>
-        <button id="presetStepUp" title="Añade el siguiente en la escala de 0.25, sin contar valores añadidos a mano">＋0.25</button>
+        <button id="presetStepDown" data-i18n-title="options.presetStepDown.title">－0.25</button>
+        <button id="presetStepUp" data-i18n-title="options.presetStepUp.title">＋0.25</button>
       </div>
 
       <div id="presetChips" class="preset-chips"></div>
 
       <div class="preset-add">
-        <input type="number" id="newPresetValue" step="0.05" min="0.07" max="16" placeholder="añadir a mano, ej: 1.6" />
-        <button id="addPresetBtn">＋ Añadir</button>
+        <input type="number" id="newPresetValue" step="0.05" min="0.07" max="16" data-i18n-placeholder="options.newPresetValue.placeholder" />
+        <button id="addPresetBtn" data-i18n="options.addPresetBtn">＋ Añadir</button>
       </div>
-      <button id="resetPresets" class="link-btn">Restaurar presets por defecto</button>
+      <button id="resetPresets" class="link-btn" data-i18n="options.resetPresets">Restaurar presets por defecto</button>
     </div>
     <div class="field checkbox">
       <input type="checkbox" id="rememberSpeedPerDomain" />
-      <label for="rememberSpeedPerDomain">Recordar la última velocidad usada en cada sitio y aplicarla al cargar un vídeo nuevo</label>
+      <label for="rememberSpeedPerDomain" data-i18n="options.rememberSpeedPerDomain.label">Recordar la última velocidad usada en cada sitio y aplicarla al cargar un vídeo nuevo</label>
     </div>
     <div class="field checkbox">
       <input type="checkbox" id="wheelSpeedControl" />
-      <label for="wheelSpeedControl">Cambiar velocidad con Ctrl + rueda del ratón sobre el vídeo (sin Ctrl, el scroll de la página funciona con normalidad)</label>
+      <label for="wheelSpeedControl" data-i18n="options.wheelSpeedControl.label">Cambiar velocidad con Ctrl + rueda del ratón sobre el vídeo (sin Ctrl, el scroll de la página funciona con normalidad)</label>
     </div>
   </section>
 
   <section class="card">
-    <h2>Volumen de la extensión</h2>
-    <p class="hint">
-      Es una capa de volumen <strong>aparte</strong> del propio reproductor del sitio — no se sincronizan entre sí.
-      100% aquí significa "no toco nada"; el resto se aplica como un multiplicador independiente por encima de lo
-      que sea que tengas puesto en el reproductor (0% lo silencia solo desde la extensión, 300% lo triplica).
-    </p>
+    <h2 data-i18n="options.volume.h2">Volumen de la extensión</h2>
+    <p class="hint" data-i18n-html="options.volume.hint"></p>
     <div class="field">
-      <label for="volumeMax">Volumen máximo de la extensión (%)</label>
+      <label for="volumeMax" data-i18n="options.volumeMax.label">Volumen máximo de la extensión (%)</label>
       <input type="number" id="volumeMax" min="100" max="1000" step="25" />
-      <p class="hint">Amplificar mucho por encima de 100% puede distorsionar el audio si la fuente ya va alta de volumen — es una limitación del propio audio, no de la extensión.</p>
+      <p class="hint" data-i18n="options.volumeMax.hint"></p>
     </div>
     <div class="field">
-      <label for="volumeStep">Incremento por pulsación de subir/bajar volumen (%)</label>
+      <label for="volumeStep" data-i18n="options.volumeStep.label">Incremento por pulsación de subir/bajar volumen (%)</label>
       <input type="number" id="volumeStep" min="1" max="100" step="5" />
     </div>
     <div class="field checkbox">
       <input type="checkbox" id="rememberVolumePerDomain" />
-      <label for="rememberVolumePerDomain">Recordar el último volumen de la extensión usado en cada sitio (solo el valor neutro 100% se restaura automáticamente al cargar — cualquier otro requiere un toque manual para evitar quedarse en silencio)</label>
+      <label for="rememberVolumePerDomain" data-i18n="options.rememberVolumePerDomain.label">Recordar el último volumen de la extensión usado en cada sitio</label>
     </div>
   </section>
 
   <section class="card">
-    <h2>Reproducción</h2>
+    <h2 data-i18n="options.playback.h2">Reproducción</h2>
     <div class="field">
-      <label for="seekSeconds">Segundos para "Retroceder/Avanzar <span id="seekSecondsPreview">N</span> segundos"</label>
+      <label for="seekSeconds" id="seekSecondsLabel"></label>
       <input type="number" id="seekSeconds" min="1" max="120" />
     </div>
     <div class="field checkbox">
       <input type="checkbox" id="showOverlay" />
-      <label for="showOverlay">Mostrar aviso en pantalla al usar un atajo (incluye pausa/reanudación con timestamp)</label>
+      <label for="showOverlay" data-i18n="options.showOverlay.label">Mostrar aviso en pantalla al usar un atajo</label>
     </div>
     <div class="field checkbox">
       <input type="checkbox" id="frameStepAudio" />
-      <label for="frameStepAudio">
-        Reproducir sonido real al pasar de fotograma a fotograma (reproduce brevemente el vídeo en vez de saltar en silencio;
-        al avanzar es exacto, al retroceder se oye un "tic" de confirmación porque los navegadores no soportan audio en reversa)
-      </label>
+      <label for="frameStepAudio" data-i18n="options.frameStepAudio.label">Reproducir sonido real al pasar de fotograma a fotograma</label>
     </div>
   </section>
 
   <section class="card">
-    <h2>Atajos de teclado</h2>
-    <p class="hint">
-      Los atajos son <strong>globales</strong> por defecto (se aplican en todas las páginas). Si un sitio ya usa esa
-      misma tecla para otra cosa, cambia el ámbito abajo a ese dominio y define un atajo distinto (o bórralo) solo para él —
-      el override de dominio siempre gana sobre el global.
-    </p>
+    <h2 data-i18n="options.shortcuts.h2">Atajos de teclado</h2>
+    <p class="hint" data-i18n-html="options.shortcuts.hint"></p>
 
     <div class="scope-bar">
-      <label for="scopeSelect">Ámbito:</label>
+      <label for="scopeSelect" data-i18n="options.scopeSelect.label">Ámbito:</label>
       <select id="scopeSelect"></select>
-      <input type="text" id="newDomainInput" placeholder="ej: www.crunchyroll.com" />
-      <button id="addDomainBtn">＋ Añadir dominio</button>
-      <button id="removeDomainBtn" class="danger hidden">Eliminar este dominio</button>
+      <input type="text" id="newDomainInput" data-i18n-placeholder="options.newDomainInput.placeholder" />
+      <button id="addDomainBtn" data-i18n="options.addDomainBtn">＋ Añadir dominio</button>
+      <button id="removeDomainBtn" class="danger hidden" data-i18n="options.removeDomainBtn">Eliminar este dominio</button>
     </div>
 
     <div id="shortcutList"></div>
   </section>
 
   <section class="card">
-    <h2>Copia de seguridad</h2>
+    <h2 data-i18n="options.backup.h2">Copia de seguridad</h2>
     <div class="field inline">
-      <button id="exportBtn" class="link-btn-solid">⬇ Exportar configuración</button>
+      <button id="exportBtn" class="link-btn-solid" data-i18n="options.exportBtn">⬇ Exportar configuración</button>
       <label class="link-btn-solid file-label">
-        ⬆ Importar configuración
+        <span data-i18n="options.importBtn">⬆ Importar configuración</span>
         <input type="file" id="importFile" accept="application/json" hidden />
       </label>
     </div>
-    <p class="hint">Incluye atajos globales, overrides por dominio, presets de velocidad y FPS fijados por sitio.</p>
+    <p class="hint" data-i18n="options.backup.hint">Incluye atajos globales, overrides por dominio, presets de velocidad y FPS fijados por sitio.</p>
   </section>
 
   <section class="card">
-    <h2>Restablecer</h2>
-    <p class="hint">
-      Borra todos los atajos personalizados, overrides por dominio, presets de velocidad y demás ajustes,
-      dejándolo todo como recién instalado. Esta acción no se puede deshacer — pulsa el botón dos veces para confirmar.
-    </p>
-    <button id="resetAllBtn" class="danger-btn">♻ Restaurar todo a valores por defecto</button>
+    <h2 data-i18n="options.reset.h2">Restablecer</h2>
+    <p class="hint" data-i18n="options.reset.hint">Borra todos los atajos personalizados y demás ajustes.</p>
+    <button id="resetAllBtn" class="danger-btn" data-i18n="options.resetAllBtn">♻ Restaurar todo a valores por defecto</button>
   </section>
 
   <div class="actions">
-    <button id="save" class="primary">Guardar cambios</button>
-    <span id="savedMsg" class="saved-msg hidden">✔ Guardado</span>
+    <button id="save" class="primary" data-i18n="options.save">Guardar cambios</button>
+    <span id="savedMsg" class="saved-msg hidden" data-i18n="options.savedMsg">✔ Guardado</span>
   </div>
 
   <footer class="page-footer">
     <span>© Framewise — Unax Zulaika Fuente</span>
     <span class="sep">·</span>
-    <a href="https://framewise.zula.dev" target="_blank" rel="noopener noreferrer">Web</a>
+    <a href="https://framewise.zula.dev" target="_blank" rel="noopener noreferrer" data-i18n="options.footer.web">Web</a>
     <span class="sep">·</span>
-    <a href="https://github.com/Zulaa9/framewise" target="_blank" rel="noopener noreferrer">GitHub</a>
+    <a href="https://github.com/Zulaa9/framewise" target="_blank" rel="noopener noreferrer" data-i18n="options.footer.github">GitHub</a>
   </footer>
 
+  <script src="i18n.js"></script>
   <script src="settings.js"></script>
   <script src="options.js"></script>
 </body>

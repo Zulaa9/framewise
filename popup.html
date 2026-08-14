@@ -9,21 +9,22 @@
   <header>
     <span class="title"><img src="icons/icon48.png" alt="" class="logo-mark" /> Framewise</span>
     <span class="header-actions">
-      <button id="pauseBtn" class="hidden" title="Desactivar los atajos de teclado de Framewise en este sitio">⏸</button>
-      <button id="floatBtn" class="hidden" title="Superponer: flota por encima de todo, incluida la pestaña del vídeo">📌</button>
-      <button id="detachBtn" title="Abrir en ventana aparte (se queda abierta hagas clic donde hagas clic)">🗗</button>
-      <button id="openOptions" title="Configurar atajos">⚙</button>
+      <button id="pauseBtn" class="hidden" data-i18n-title="popup.pauseBtn.off">⏸</button>
+      <button id="floatBtn" class="hidden" data-i18n-title="popup.floatBtn.title">📌</button>
+      <button id="detachBtn" data-i18n-title="popup.detachBtn.title">🗗</button>
+      <button id="langToggle" class="lang-toggle" title="EN / ES">ES</button>
+      <button id="openOptions" data-i18n-title="popup.openOptions.title">⚙</button>
     </span>
   </header>
 
-  <div id="pausedHint" class="paused-hint hidden">⏸ Atajos de teclado desactivados en este sitio</div>
+  <div id="pausedHint" class="paused-hint hidden" data-i18n="popup.pausedHint"></div>
 
   <div id="noVideo" class="hint hidden">
-    <p>No se encontró vídeo en esta pestaña.</p>
+    <p data-i18n="popup.noVideo.message"></p>
     <div class="no-video-actions">
-      <button id="retryBtn">🔄 Buscar de nuevo</button>
-      <button id="reloadTabBtn">↻ Recargar la pestaña y reintentar</button>
-      <button id="pickVideoBtn">🎯 Marcar vídeo manualmente</button>
+      <button id="retryBtn" data-i18n="popup.retryBtn"></button>
+      <button id="reloadTabBtn" data-i18n="popup.reloadTabBtn"></button>
+      <button id="pickVideoBtn" data-i18n="popup.pickVideoBtn"></button>
     </div>
   </div>
 
@@ -35,25 +36,25 @@
     </div>
 
     <div class="row buttons-row">
-      <button id="frameBack" title="Retroceder 1 fotograma">⏮ Fotograma</button>
-      <button id="togglePlay" title="Play / Pausa">⏯</button>
-      <button id="frameForward" title="Avanzar 1 fotograma">Fotograma ⏭</button>
+      <button id="frameBack" data-i18n-title="popup.frameBack.title" data-i18n="popup.frameBack.label"></button>
+      <button id="togglePlay" data-i18n-title="popup.togglePlay.title">⏯</button>
+      <button id="frameForward" data-i18n-title="popup.frameForward.title" data-i18n="popup.frameForward.label"></button>
     </div>
 
     <div class="row buttons-row">
-      <button id="seekBack" title="Retroceder">⏪</button>
-      <button id="toggleMute" title="Silenciar">🔊</button>
-      <button id="seekForward" title="Avanzar">⏩</button>
+      <button id="seekBack" title="">⏪</button>
+      <button id="toggleMute" data-i18n-title="popup.toggleMute.title">🔊</button>
+      <button id="seekForward" title="">⏩</button>
     </div>
 
     <div class="row buttons-row">
-      <button id="toggleLoop" title="Bucle">🔁</button>
-      <button id="togglePip" title="Picture-in-Picture">🗔 PiP</button>
-      <button id="screenshot" title="Capturar fotograma">📸</button>
-      <button id="recordClip" title="Grabar clip de vídeo (vuelve a pulsar para detener y guardar)">⏺ Rec</button>
+      <button id="toggleLoop" title="">🔁</button>
+      <button id="togglePip" title="" data-i18n="popup.togglePip.label"></button>
+      <button id="screenshot" title="">📸</button>
+      <button id="recordClip" title="" data-i18n="popup.recordClip.label.idle"></button>
     </div>
 
-    <div class="section-label">Velocidad <span class="muted">(escalonado hasta 2x · más arriba con los botones)</span></div>
+    <div class="section-label"><span data-i18n="popup.speed.sectionLabel"></span> <span class="muted" data-i18n="popup.speed.hint"></span></div>
     <div class="row slider-row">
       <button id="speedDown">−</button>
       <input type="range" id="speedSlider" min="0" max="1" step="1" value="0" />
@@ -61,7 +62,7 @@
     </div>
     <div id="speedPresets" class="presets"></div>
 
-    <div class="section-label">Volumen de la extensión <span class="muted" id="volumeMaxHint">(hasta 300% · independiente del volumen del reproductor)</span></div>
+    <div class="section-label"><span data-i18n="popup.volume.sectionLabel"></span> <span class="muted" id="volumeMaxHint"></span></div>
     <div class="row slider-row">
       <button id="volumeDown">−</button>
       <input type="range" id="volumeSlider" min="0" max="300" step="5" value="100" />
@@ -69,22 +70,23 @@
     </div>
     <div class="row volume-row">
       <span id="volumeBadge">100%</span>
-      <button id="volumeReset" title="Volumen normal (100%)">100%</button>
+      <button id="volumeReset" data-i18n-title="popup.volumeReset.title">100%</button>
     </div>
 
-    <div class="section-label">FPS de este sitio</div>
+    <div class="section-label" data-i18n="popup.fps.sectionLabel"></div>
     <div class="row fps-row">
-      <span id="fpsInfo">detectando…</span>
-      <button id="useDetectedFps" title="Usar el FPS detectado para este dominio">Usar aquí</button>
+      <span id="fpsInfo" data-i18n="popup.fpsInfo.detecting"></span>
+      <button id="useDetectedFps" data-i18n-title="popup.useDetectedFps.title" data-i18n="popup.useDetectedFps.label"></button>
     </div>
   </section>
 
   <footer>
-    <a href="#" id="openDomainOptions">⚙ Atajos de este sitio</a>
+    <a href="#" id="openDomainOptions" data-i18n="popup.footer.domainOptions"></a>
     <span>·</span>
-    <a href="#" id="openOptions2">Opciones globales</a>
+    <a href="#" id="openOptions2" data-i18n="popup.footer.globalOptions"></a>
   </footer>
 
+  <script src="i18n.js"></script>
   <script src="settings.js"></script>
   <script src="popup.js"></script>
 </body>
