@@ -489,7 +489,7 @@
       // Si el salto falló, seekWithGuard ya dejó su propio aviso en pantalla — no lo tapamos
       // con el overlay normal de "±N frame".
       if (!seekFailed) {
-        showOverlay(`${frames > 0 ? "▶" : "◀"} ${frames > 0 ? "+" : ""}${frames} frame  ·  ${formatTime(video.currentTime)}`);
+        showOverlay(`${frames > 0 ? "▶" : "◀"} ${frames > 0 ? "+" : ""}${frames} fotograma  ·  ${formatTime(video.currentTime)}`);
       }
     } finally {
       frameStepBusy = false;
@@ -600,7 +600,7 @@
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 5000);
       }, "image/png");
-      showOverlay("📸 Frame capturado");
+      showOverlay("📸 Fotograma capturado");
     } catch (err) {
       showOverlay("⚠ No se pudo capturar (¿vídeo protegido/DRM?)");
     }
@@ -742,7 +742,7 @@
     video.currentTime = clampTime(video, Math.round(video.currentTime / frameLen) * frameLen);
     if (typeof priorRate === "number") video.playbackRate = priorRate;
     suppressGenericOverlayUntil = Date.now() + 250;
-    showOverlay(`▶ frame · ${formatTime(video.currentTime)}`);
+    showOverlay(`▶ fotograma · ${formatTime(video.currentTime)}`);
   }
 
   function stopAllRepeats() {
@@ -751,7 +751,7 @@
   }
 
   function startRepeatIfNeeded(id, combo, video) {
-    const action = settings.actions[id];
+    const action = ACTION_DEFS[id];
     if (!action || !action.repeatable) return;
 
     const canHoldPlay =
@@ -787,13 +787,21 @@
   window.addEventListener("blur", stopAllRepeats);
   document.addEventListener("keyup", stopAllRepeats, true);
 
+  // Pausa rápida por dominio (botón ⏸ del popup): desactiva SOLO la escucha automática de
+  // teclado/rueda en este sitio, no la extensión entera — los botones del popup siguen enviando
+  // "runAction" con normalidad, porque esos son clics deliberados y nunca chocan con los atajos del
+  // propio sitio, que es justo el problema que este botón existe para resolver.
+  function isPausedHere() {
+    return !!(settings.pausedDomains && settings.pausedDomains[domain]);
+  }
+
   function onKeydown(e) {
-    if (!settings || isTypingTarget(e)) return;
+    if (!settings || isTypingTarget(e) || isPausedHere()) return;
     const video = activeVideo();
     if (!video) return;
     const combo = eventToShortcut(e);
     if (!combo) return;
-    for (const id of Object.keys(settings.actions)) {
+    for (const id of Object.keys(ACTION_DEFS)) {
       const shortcut = effectiveShortcutFor(settings, domain, id);
       if (shortcut && shortcut === combo) {
         e.preventDefault();
@@ -811,7 +819,7 @@
   // Solo con Ctrl (o Cmd en Mac) pulsado, para no robarle el scroll normal de la página a sitios
   // donde el vídeo está embebido dentro de un contenido más largo (blogs, foros, etc.).
   function onWheel(e) {
-    if (!settings || !settings.wheelSpeedControl) return;
+    if (!settings || !settings.wheelSpeedControl || isPausedHere()) return;
     if (!e.ctrlKey && !e.metaKey) return;
     const video = activeVideo();
     if (!video) return;

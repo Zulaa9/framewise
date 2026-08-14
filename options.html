@@ -11,7 +11,7 @@
   <section class="card">
     <h2>Fotogramas</h2>
     <div class="field">
-      <label for="fps">FPS global (para el paso de 1 frame, cuando el sitio no tiene FPS propio ni se detecta en vivo)</label>
+      <label for="fps">FPS global (para el paso de 1 fotograma, cuando el sitio no tiene FPS propio ni se detecta en vivo)</label>
       <div class="inline">
         <input type="number" id="fps" step="0.001" min="1" max="240" />
         <select id="fpsPreset">
@@ -28,7 +28,7 @@
       </div>
     </div>
     <div class="field">
-      <label for="multiFrameCount">Nº de frames para "Retroceder/Avanzar N frames"</label>
+      <label for="multiFrameCount">Nº de fotogramas para "Retroceder/Avanzar <span id="multiFrameCountPreview">N</span> fotogramas"</label>
       <input type="number" id="multiFrameCount" min="1" max="500" />
     </div>
   </section>
@@ -90,7 +90,7 @@
   <section class="card">
     <h2>Reproducción</h2>
     <div class="field">
-      <label for="seekSeconds">Segundos para "Retroceder/Avanzar N segundos"</label>
+      <label for="seekSeconds">Segundos para "Retroceder/Avanzar <span id="seekSecondsPreview">N</span> segundos"</label>
       <input type="number" id="seekSeconds" min="1" max="120" />
     </div>
     <div class="field checkbox">
@@ -100,7 +100,7 @@
     <div class="field checkbox">
       <input type="checkbox" id="frameStepAudio" />
       <label for="frameStepAudio">
-        Reproducir sonido real al pasar frame a frame (reproduce brevemente el vídeo en vez de saltar en silencio;
+        Reproducir sonido real al pasar de fotograma a fotograma (reproduce brevemente el vídeo en vez de saltar en silencio;
         al avanzar es exacto, al retroceder se oye un "tic" de confirmación porque los navegadores no soportan audio en reversa)
       </label>
     </div>
@@ -150,6 +150,14 @@
     <button id="save" class="primary">Guardar cambios</button>
     <span id="savedMsg" class="saved-msg hidden">✔ Guardado</span>
   </div>
+
+  <footer class="page-footer">
+    <span>© Framewise — Unax Zulaika Fuente</span>
+    <span class="sep">·</span>
+    <a href="https://framewise.zula.dev" target="_blank" rel="noopener noreferrer">Web</a>
+    <span class="sep">·</span>
+    <a href="https://github.com/Zulaa9/framewise" target="_blank" rel="noopener noreferrer">GitHub</a>
+  </footer>
 
   <script src="settings.js"></script>
   <script src="options.js"></script>

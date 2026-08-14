@@ -19,6 +19,17 @@ function populateForm() {
   renderPresetChips();
   renderScopeSelect();
   renderShortcuts();
+  updateCountPreviews();
+}
+
+// Los propios campos "Nº de fotogramas" y "Segundos" citan su valor entre comillas en su propio
+// label (ver options.html) — se mantiene en vivo, tecla a tecla, para que nunca se vea desincronizado
+// del número que el campo tiene puesto en ese instante. Los labels de atajos (Retroceder {n}
+// fotogramas, etc.) se refrescan aparte, en renderShortcuts, porque solo esos dos campos alimentan
+// un "{n}" en las acciones (ver ACTION_LABEL_COUNT_SOURCE en settings.js).
+function updateCountPreviews() {
+  q("multiFrameCountPreview").textContent = settings.multiFrameCount;
+  q("seekSecondsPreview").textContent = settings.seekSeconds;
 }
 
 // ---------- Presets de velocidad (chips añadir/quitar) ----------
@@ -122,7 +133,8 @@ function renderScopeSelect() {
       const opt = document.createElement("option");
       opt.value = domain;
       const n = Object.keys(settings.domainOverrides[domain]).length;
-      opt.textContent = `${domain}  (${n} override${n === 1 ? "" : "s"})`;
+      const paused = settings.pausedDomains && settings.pausedDomains[domain];
+      opt.textContent = `${domain}  (${n} override${n === 1 ? "" : "s"})${paused ? " · ⏸ pausado" : ""}`;
       sel.appendChild(opt);
     });
 
@@ -155,13 +167,13 @@ function renderShortcuts() {
   const isGlobal = currentScope === "global";
   const overrides = isGlobal ? null : settings.domainOverrides[currentScope] || {};
 
-  Object.entries(settings.actions).forEach(([id, cfg]) => {
+  Object.keys(ACTION_DEFS).forEach((id) => {
     const row = document.createElement("div");
     row.className = "shortcut-row";
 
     const label = document.createElement("span");
     label.className = "label";
-    label.textContent = cfg.label;
+    label.textContent = resolveActionLabel(settings, id);
 
     const controls = document.createElement("div");
     controls.className = "controls";
@@ -169,15 +181,16 @@ function renderShortcuts() {
     const keycap = document.createElement("span");
     keycap.id = `keycap-${id}`;
 
+    const globalShortcut = effectiveGlobalShortcut(settings, id);
     let displayValue, isOverridden;
     if (isGlobal) {
-      displayValue = cfg.shortcut;
+      displayValue = globalShortcut;
       isOverridden = false;
     } else if (Object.prototype.hasOwnProperty.call(overrides, id)) {
       displayValue = overrides[id];
       isOverridden = true;
     } else {
-      displayValue = cfg.shortcut;
+      displayValue = globalShortcut;
       isOverridden = false;
     }
 
@@ -201,7 +214,8 @@ function renderShortcuts() {
       : "Desactiva esta acción solo en este dominio (sin heredar del global)";
     clearBtn.addEventListener("click", () => {
       if (isGlobal) {
-        settings.actions[id].shortcut = "";
+        if (!settings.shortcuts) settings.shortcuts = {};
+        settings.shortcuts[id] = "";
       } else {
         settings.domainOverrides[currentScope][id] = "";
       }
@@ -236,7 +250,7 @@ function renderShortcuts() {
 // acciones a la vez, así se puede detectar si dos acciones comparten combinación en ese ámbito.
 function effectiveShortcutsForScope(scope) {
   const map = {};
-  Object.keys(settings.actions).forEach((id) => {
+  Object.keys(ACTION_DEFS).forEach((id) => {
     map[id] = effectiveShortcutFor(settings, scope === "global" ? "__global__" : scope, id);
   });
   return map;
@@ -268,8 +282,12 @@ function startRecording(id, keycapEl, btnEl) {
     if (combo) {
       const isGlobal = currentScope === "global";
       if (isGlobal) {
-        const clash = Object.entries(settings.actions).find(([oid, c]) => oid !== id && c.shortcut === combo);
-        settings.actions[id].shortcut = combo;
+        const clash = Object.keys(ACTION_DEFS)
+          .filter((oid) => oid !== id)
+          .map((oid) => [oid, effectiveGlobalShortcut(settings, oid)])
+          .find(([, shortcut]) => shortcut === combo);
+        if (!settings.shortcuts) settings.shortcuts = {};
+        settings.shortcuts[id] = combo;
         renderShortcuts();
         warnIfClash(clash, combo);
       } else {
@@ -289,7 +307,7 @@ function startRecording(id, keycapEl, btnEl) {
 
 function warnIfClash(clash, combo) {
   if (!clash) return;
-  const clashLabel = settings.actions[clash[0]].label;
+  const clashLabel = resolveActionLabel(settings, clash[0]);
   const clashRow = [...document.querySelectorAll(".shortcut-row")].find(
     (r) => r.querySelector(".label").textContent === clashLabel
   );
@@ -313,7 +331,7 @@ function warnIfDomainClash(id, combo) {
   const overrides = settings.domainOverrides[currentScope] || {};
   const clashIsOwnOverride = Object.prototype.hasOwnProperty.call(overrides, clashId) && overrides[clashId] !== "";
   const source = clashIsOwnOverride ? "personalizado en este dominio" : "heredado del global";
-  const clashLabel = settings.actions[clashId].label;
+  const clashLabel = resolveActionLabel(settings, clashId);
 
   const clashRow = [...document.querySelectorAll(".shortcut-row")].find(
     (r) => r.querySelector(".label").textContent === clashLabel
@@ -356,31 +374,41 @@ function exportSettings() {
   setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
-const KNOWN_ACTION_IDS = Object.keys(SYNC_DEFAULTS.actions);
+const KNOWN_ACTION_IDS = Object.keys(ACTION_DEFS);
 
 function isPlainObject(v) {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
-// Normaliza una entrada de settings.actions[id] proveniente de un archivo importado: si no tiene la
-// forma esperada, se usa la acción por defecto entera; si la tiene, cada campo se sanea por
-// separado (nunca se confía en el tipo de un campo suelto del JSON importado).
-function normalizeImportedAction(id, raw) {
-  const base = DEFAULT_SETTINGS.actions[id];
-  if (!isPlainObject(raw)) return { ...base };
-  return {
-    label: typeof raw.label === "string" && raw.label ? raw.label : base.label,
-    shortcut: typeof raw.shortcut === "string" ? raw.shortcut : base.shortcut,
-    repeatable: typeof raw.repeatable === "boolean" ? raw.repeatable : base.repeatable
-  };
+// Reduce lo que traiga el archivo importado a un mapa de deltas (id -> shortcut), el único formato
+// que se persiste. Admite tanto una copia de seguridad ya en el formato nuevo ("shortcuts") como una
+// exportada por una versión anterior a esta reestructuración ("actions" completo con label/shortcut/
+// repeatable) — en ese segundo caso se reutiliza el mismo criterio que migrateLegacyActions en
+// settings.js: solo se conserva lo que de verdad difiere de cualquier default conocido, viejo o
+// actual, nunca el label ni el repeatable del archivo (esos siempre vienen del código actual).
+function normalizeImportedShortcuts(raw) {
+  if (isPlainObject(raw.shortcuts)) {
+    const clean = {};
+    Object.keys(raw.shortcuts).forEach((id) => {
+      if (KNOWN_ACTION_IDS.includes(id) && typeof raw.shortcuts[id] === "string") {
+        clean[id] = raw.shortcuts[id];
+      }
+    });
+    return clean;
+  }
+  if (isPlainObject(raw.actions)) {
+    return migrateLegacyActions({ actions: raw.actions, shortcuts: {} }) || {};
+  }
+  return {};
 }
 
 // Valida una configuración importada ANTES de aplicar nada: si algo tiene un tipo fundamentalmente
-// incorrecto en los campos clave (speedPresets, actions, domainOverrides, los mapas por dominio),
-// se rechaza entera con un mensaje claro en vez de dejar el ajuste actual a medio pisar. Los campos
-// ausentes (configuraciones antiguas) se rellenan con los valores por defecto; los valores sueltos
-// con tipo incorrecto dentro de una colección válida se descartan uno a uno en vez de invalidar todo
-// el archivo.
+// incorrecto en los campos clave (speedPresets, shortcuts/actions, domainOverrides, los mapas por
+// dominio), se rechaza entera con un mensaje claro en vez de dejar el ajuste actual a medio pisar.
+// Los campos ausentes (configuraciones antiguas) se rellenan con los valores por defecto; los
+// valores sueltos con tipo incorrecto dentro de una colección válida se descartan uno a uno en vez
+// de invalidar todo el archivo. "actions" (formato de antes de esta reestructuración) también se
+// admite — ver normalizeImportedShortcuts.
 function validateImportedSettings(raw) {
   if (!isPlainObject(raw)) {
     return { ok: false, error: "el archivo no contiene un objeto de configuración." };
@@ -397,16 +425,13 @@ function validateImportedSettings(raw) {
     speedPresets = valid.length ? valid : DEFAULT_SETTINGS.speedPresets.slice();
   }
 
-  let actions = { ...DEFAULT_SETTINGS.actions };
-  if (raw.actions !== undefined) {
-    if (!isPlainObject(raw.actions)) {
-      return { ok: false, error: '"actions" debería ser un objeto de acciones.' };
-    }
-    actions = {};
-    KNOWN_ACTION_IDS.forEach((id) => {
-      actions[id] = normalizeImportedAction(id, raw.actions[id]);
-    });
+  if (raw.shortcuts !== undefined && !isPlainObject(raw.shortcuts)) {
+    return { ok: false, error: '"shortcuts" debería ser un objeto (acción → atajo).' };
   }
+  if (raw.actions !== undefined && !isPlainObject(raw.actions)) {
+    return { ok: false, error: '"actions" debería ser un objeto de acciones.' };
+  }
+  const shortcuts = normalizeImportedShortcuts(raw);
 
   let domainOverrides = {};
   if (raw.domainOverrides !== undefined) {
@@ -452,7 +477,7 @@ function validateImportedSettings(raw) {
     volumeStep: numberOr(raw.volumeStep, DEFAULT_SETTINGS.volumeStep),
     rememberVolumePerDomain: boolOr(raw.rememberVolumePerDomain, DEFAULT_SETTINGS.rememberVolumePerDomain),
     speedPresets,
-    actions,
+    shortcuts,
     domainOverrides,
     domainSpeeds: domainMaps.domainSpeeds,
     domainFps: domainMaps.domainFps,
@@ -486,6 +511,20 @@ function importSettingsFromFile(file) {
   };
   reader.readAsText(file);
 }
+
+// Si algo cambia en storage desde otro contexto (el popup, otra pestaña de Opciones) mientras esta
+// sigue abierta, se refresca lo que se RENDERIZA a partir de settings (lista de atajos, selector de
+// ámbito, vistas previas de {n}) — nunca los campos de formulario en sí, para no pisarle a media
+// escritura algo que el usuario pueda estar editando en ese instante.
+chrome.storage.onChanged.addListener((changes, area) => {
+  if ((area !== "sync" && area !== "local") || !settings) return;
+  loadSettings((s) => {
+    settings = s;
+    renderScopeSelect();
+    renderShortcuts();
+    updateCountPreviews();
+  });
+});
 
 // Si la pestaña de Opciones ya estaba abierta, el popup no puede "recargarla" — nos avisa por
 // mensaje para que cambiemos de ámbito en caliente sin esperar a una carga nueva de la página.
@@ -561,6 +600,23 @@ function init() {
 
   q("fpsPreset").addEventListener("change", (e) => {
     if (e.target.value) q("fps").value = e.target.value;
+  });
+
+  // Vista previa en vivo: mientras se escribe, ya se actualiza tanto el propio label del campo como
+  // los labels de los atajos que citan ese número (Retroceder {n} fotogramas/segundos) — sin esperar
+  // a "Guardar cambios". settings.* se actualiza aquí también (no solo al guardar) para que ambos
+  // reflejen exactamente lo que hay escrito en cada momento, tecleo a tecleo.
+  q("multiFrameCount").addEventListener("input", (e) => {
+    const v = parseInt(e.target.value, 10);
+    if (!isNaN(v)) settings.multiFrameCount = v;
+    updateCountPreviews();
+    renderShortcuts();
+  });
+  q("seekSeconds").addEventListener("input", (e) => {
+    const v = parseFloat(e.target.value);
+    if (!isNaN(v)) settings.seekSeconds = v;
+    updateCountPreviews();
+    renderShortcuts();
   });
 
   q("resetPresets").addEventListener("click", () => {

@@ -4,6 +4,34 @@ let activeHostname = null;
 
 function q(id) { return document.getElementById(id); }
 
+// Títulos de seekBack/seekForward incluyen el nº de segundos real configurado — no un "N" fijo en
+// el HTML — así que se rellenan aquí en vez de quedar escritos en popup.html.
+function applyDynamicTitles() {
+  q("seekBack").title = `Retroceder ${settings.seekSeconds} segundos`;
+  q("seekForward").title = `Avanzar ${settings.seekSeconds} segundos`;
+}
+
+// Botón de pausa rápida: desactiva solo los listeners de teclado/rueda de content.js en ESTE
+// dominio (los botones del popup se siguen pudiendo usar con normalidad) — pensado para cuando un
+// atajo de Framewise choca con uno propio del sitio y hace falta apagarlo sin entrar a Opciones.
+function applyPausedUi() {
+  const btn = q("pauseBtn");
+  const hint = q("pausedHint");
+  if (!activeHostname) {
+    btn.classList.add("hidden");
+    hint.classList.add("hidden");
+    return;
+  }
+  btn.classList.remove("hidden");
+  const isPaused = !!(settings.pausedDomains && settings.pausedDomains[activeHostname]);
+  btn.textContent = isPaused ? "▶" : "⏸";
+  btn.title = isPaused
+    ? "Reactivar los atajos de teclado de Framewise en este sitio"
+    : "Desactivar los atajos de teclado de Framewise en este sitio (por si chocan con los del sitio)";
+  btn.classList.toggle("paused-active", isPaused);
+  hint.classList.toggle("hidden", !isPaused);
+}
+
 // Pregunta al background en qué frame de la pestaña está el vídeo (puede ser un iframe). Si no lo
 // sabe (aún no se registró), null — se manda sin frame concreto y responde el que corresponda.
 function resolveVideoFrameId() {
@@ -282,11 +310,33 @@ async function init() {
 
   loadSettings((s) => {
     settings = s;
+    applyDynamicTitles();
+    applyPausedUi();
     refreshState();
     startTimeTicker();
   });
 
   window.addEventListener("unload", stopTimeTicker);
+
+  // Si Opciones (u otra copia del popup) cambia algo mientras este panel sigue abierto, se refleja
+  // aquí sin esperar a que el usuario lo cierre y lo vuelva a abrir — mismo criterio que ya usan
+  // content.js y options.js para mantenerse en sync entre sí.
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if ((area !== "sync" && area !== "local") || !settings) return;
+    loadSettings((s) => {
+      settings = s;
+      applyDynamicTitles();
+      applyPausedUi();
+    });
+  });
+
+  q("pauseBtn").addEventListener("click", () => {
+    if (!activeHostname) return;
+    if (!settings.pausedDomains) settings.pausedDomains = {};
+    settings.pausedDomains[activeHostname] = !settings.pausedDomains[activeHostname];
+    saveSettings({ pausedDomains: settings.pausedDomains });
+    applyPausedUi();
+  });
 
   bind("frameBack", () => sendToTab({ type: "runAction", id: "frameBack" }));
   bind("frameForward", () => sendToTab({ type: "runAction", id: "frameForward" }));

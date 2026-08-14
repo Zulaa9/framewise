@@ -76,6 +76,21 @@ header button {
   border-radius: 6px;
 }
 header button:hover { background: color-mix(in srgb, var(--color-ink) 8%, transparent); }
+/* Mismo lenguaje visual que .buttons-row button.warn (ámbar = "algo está desactivado, ten
+   cuidado"), aplicado aquí al botón de pausa cuando los atajos están apagados en este sitio. */
+header button#pauseBtn.paused-active {
+  color: var(--color-accent-amber);
+  background: color-mix(in srgb, var(--color-accent-amber) 16%, transparent);
+}
+
+.paused-hint {
+  padding: 6px 12px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--color-accent-amber);
+  background: color-mix(in srgb, var(--color-accent-amber) 12%, var(--color-well));
+  border-bottom: 1px solid var(--color-border);
+}
 
 #controls { padding: 12px; }
 .hint { padding: 16px; text-align: center; color: var(--color-ink-subtle); }

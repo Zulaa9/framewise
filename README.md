@@ -35,6 +35,7 @@ It has no build step and no external dependencies: plain JavaScript, loaded dire
 ### Keyboard shortcuts
 - Every action has a default shortcut, fully reassignable from the Options page.
 - Per-domain overrides: define a different shortcut (or disable one) for a specific site without touching the global default — useful when a site already uses the same key for something else. A domain override always wins over the global shortcut.
+- Quick pause: a toolbar-popup button disables Framewise's own keyboard/wheel shortcuts on the current site only (in one click, no trip to Options) — for when one of them collides with a shortcut the site itself already uses. Popup buttons keep working normally while paused, since a deliberate click can't collide with anything.
 
 ### Reliable video detection
 - Works even when the player lives inside an iframe, and when multiple videos are playing simultaneously across different frames — Framewise always targets whichever is actually playing (or the largest visible one if none are).
@@ -68,16 +69,41 @@ Open any page with a video playing and use the default shortcuts:
 
 | Action | Default shortcut |
 | --- | --- |
-| Previous frame | `,` |
-| Next frame | `.` |
-| Increase speed (next preset) | `]` |
-| Decrease speed (previous preset) | `[` |
-| Reset speed to 1× | `\` |
+| Previous frame | `Ctrl+,` |
+| Next frame | `Ctrl+.` |
+| Previous N frames | `Ctrl+Shift+,` |
+| Next N frames | `Ctrl+Shift+.` |
+| Increase speed (next preset) | `Ctrl+]` |
+| Decrease speed (previous preset) | `Ctrl+[` |
+| Reset speed to 1× | `Ctrl+\` |
 | Play / Pause | `k` |
 | Seek backward | `j` |
 | Seek forward | `l` |
+| Loop | `Ctrl+Shift+L` |
+| Picture-in-Picture | `Ctrl+I` |
+| Mute | `Ctrl+M` |
+| Screenshot | `Ctrl+Shift+F` |
+| Record clip | `Ctrl+Shift+G` |
+| Volume up | `Ctrl+Shift+↑` |
+| Volume down | `Ctrl+Shift+↓` |
+| Volume reset (100%) | `Ctrl+Shift+\` |
 
-Volume, loop, mute, Picture-in-Picture, screenshot and multi-frame jumps have no shortcut bound by default — assign them from Options if you want quick keyboard access.
+Transport controls (`Play/Pause`, `Seek backward`, `Seek forward` — `k`/`j`/`l`) are a deliberate
+block that stays bare, mirroring YouTube's own native j/k/l shortcuts, and are the only exception:
+`Ctrl+K`, `Ctrl+J` and `Ctrl+L` are reserved by Chrome/Edge itself (omnibox search, Downloads page,
+and address-bar focus respectively) and never reach the page at all, so adding `Ctrl` there would
+have silently broken the extension's three most-used actions.
+
+Every other action always takes a modifier — `Mute` included, even though it could plausibly mirror
+YouTube's own bare `m`, to keep the rule simple: **bare keys belong only to that one named transport
+block; everything else Framewise-specific is always modified.** Two details worth knowing if you
+reassign these yourself:
+- `Volume up`/`down` use `Ctrl+Shift+↑`/`Ctrl+Shift+↓`, not plain `Ctrl+↑`/`Ctrl+↓` — on macOS,
+  unmodified `Ctrl+↑`/`Ctrl+↓` are the default Mission Control shortcuts at the OS level, intercepted
+  before Chrome ever sees them.
+- `Record clip`/`Screenshot` avoid any `Ctrl+Alt+*` combination — on many European keyboard layouts,
+  typing a character with AltGr is reported to the browser as `Ctrl+Alt` held together, indistinguishable
+  from a real one.
 
 Click the toolbar icon for the quick popup (frame stepping, speed, volume, play/pause, capture, etc.), or the gear icon (or "Shortcuts for this site" from the popup) to open the full Options page.
 
@@ -111,7 +137,9 @@ Manifest V3, no bundler, no runtime dependencies.
 - **Content script.** One instance per frame. Each instance announces itself on load and any previous instance in the same document tears itself down cleanly (listeners removed, observers disconnected) — this is what makes re-injection safe without risking two copies acting on the same keypress. It owns frame stepping, speed, the independent volume layer, the manual loop implementation, capability detection, and the manual video picker.
 - **Popup / Options pages.** Communicate with the content script via `chrome.runtime` messaging, resolving the correct target frame through the background worker, with automatic retries to cover the brief window right after a page loads.
 
-**Storage.** Settings are split across two storage areas on purpose: `chrome.storage.sync` holds shortcuts, presets and per-domain shortcut overrides (small, and worth carrying across the user's devices), while `chrome.storage.local` holds per-domain remembered speed/volume/FPS (these grow with every site visited and would otherwise risk hitting `sync`'s much smaller quota).
+**Storage.** Settings are split across two storage areas on purpose: `chrome.storage.sync` holds shortcuts, presets, per-domain shortcut overrides and per-domain shortcut pauses — all deliberate choices worth carrying across the user's devices — while `chrome.storage.local` holds per-domain remembered speed/volume/FPS (these grow with every site visited and would otherwise risk hitting `sync`'s much smaller quota).
+
+**Action metadata vs. user preference.** `ACTION_DEFS` in `settings.js` (label, whether it repeats on hold, factory shortcut) is a plain in-code constant, never read from or written to storage — only the actual chosen shortcut (`settings.shortcuts`, keyed by action id) is persisted, and only for actions that differ from `ACTION_DEFS`'s current default. This means a label or a new default shortcut shipped in a future version reaches every existing user immediately, without needing another migration: nothing about the display text or the factory value is ever frozen into what a past version happened to save. Versions before this split stored a full `{label, shortcut, repeatable}` blob per action in `chrome.storage.sync.actions`; `loadSettings()` migrates it automatically and once, keeping only shortcuts that genuinely differ from every default that action has ever had (old or current) — see `migrateLegacyActions` in `settings.js`.
 
 ## Known Limitations
 
