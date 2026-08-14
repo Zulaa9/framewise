@@ -1,8 +1,18 @@
-# Framewise
+<p align="center">
+  <img src="screenshots/logo.png" alt="Framewise logo" width="120">
+</p>
+
+<h1 align="center">Framewise</h1>
 
 Framewise is a Manifest V3 browser extension (Chrome / Edge) for controlling any HTML5 `<video>` with frame-level precision: step forward/backward frame by frame, adjust playback speed, amplify volume beyond the browser's native limit, and define fully custom keyboard shortcuts — globally or per website.
 
 **[framewise.zula.dev](https://framewise.zula.dev)** is the official product site — demos, screenshots and the Chrome Web Store listing live there. This document covers installation, usage, configuration and the internals for anyone building or contributing to the extension.
+
+## Screenshots
+
+| Popup on YouTube | Shortcuts (Options) | Volume amplification (Options) |
+| --- | --- | --- |
+| ![Framewise popup over a YouTube video](screenshots/popup.jpg) | ![Keyboard shortcuts page in Options](screenshots/options-shortcuts.jpg) | ![Volume amplification controls in Options](screenshots/options-volume.jpg) |
 
 ## Overview
 
@@ -64,7 +74,7 @@ across devices like any other setting. See `i18n.js` for the string dictionary a
 ## Installation
 
 ### Chrome Web Store
-Coming soon.
+Submitted and pending review. The listing will go live at the link on [framewise.zula.dev](https://framewise.zula.dev) once approved.
 
 ### Developer mode
 1. Clone this repository.
