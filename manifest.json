@@ -1,8 +1,9 @@
 {
   "manifest_version": 3,
+  "default_locale": "es",
   "name": "Framewise",
   "version": "1.0.0",
-  "description": "Frame-by-frame control for HTML5 video: playback speed, volume amplification, screenshots, Picture-in-Picture and custom shortcuts.",
+  "description": "__MSG_extDescription__",
   "homepage_url": "https://framewise.zula.dev",
   "permissions": ["storage", "scripting"],
   "host_permissions": ["<all_urls>"],

@@ -1,0 +1,6 @@
+{
+  "extDescription": {
+    "message": "Frame-by-frame control for HTML5 video: playback speed, volume amplification, screenshots, Picture-in-Picture and custom shortcuts.",
+    "description": "Short summary shown in the Chrome Web Store listing and the extensions page (max 132 characters)."
+  }
+}
