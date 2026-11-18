@@ -18,7 +18,7 @@ let importPending = false;
 const PAGE_OWNED_KEYS = [
   "fps", "multiFrameCount", "speedStep", "seekSeconds", "showOverlay", "frameStepAudio",
   "rememberSpeedPerDomain", "wheelSpeedControl", "volumeMax", "volumeStep", "rememberVolumePerDomain",
-  "speedPresets", "shortcuts", "domainOverrides"
+  "speedPresets", "shortcuts", "domainOverrides", "clipMaxMinutes"
 ];
 const EXTERNAL_KEYS = ["pausedDomains", "domainSpeeds", "domainFps", "domainVolumes"];
 
@@ -50,6 +50,7 @@ function populateForm() {
   q("volumeMax").value = settings.volumeMax;
   q("volumeStep").value = settings.volumeStep;
   q("rememberVolumePerDomain").checked = settings.rememberVolumePerDomain;
+  q("clipMaxMinutes").value = settings.clipMaxMinutes;
   applyLang();
 }
 
@@ -441,6 +442,7 @@ function collectFormIntoSettings() {
   settings.volumeMax = Math.round(clampNumber(parseInt(q("volumeMax").value, 10), "volumeMax", DEFAULT_SETTINGS.volumeMax));
   settings.volumeStep = Math.round(clampNumber(parseInt(q("volumeStep").value, 10), "volumeStep", DEFAULT_SETTINGS.volumeStep));
   settings.rememberVolumePerDomain = q("rememberVolumePerDomain").checked;
+  settings.clipMaxMinutes = clampNumber(parseFloat(q("clipMaxMinutes").value), "clipMaxMinutes", DEFAULT_SETTINGS.clipMaxMinutes);
   settings.speedPresets = settings.speedPresets.slice().sort((a, b) => a - b);
   if (settings.speedPresets.length === 0) settings.speedPresets = DEFAULT_SETTINGS.speedPresets.slice();
 }
@@ -585,6 +587,7 @@ function validateImportedSettings(raw) {
     volumeMax: Math.round(limited("volumeMax")),
     volumeStep: Math.round(limited("volumeStep")),
     rememberVolumePerDomain: boolOr(raw.rememberVolumePerDomain, DEFAULT_SETTINGS.rememberVolumePerDomain),
+    clipMaxMinutes: limited("clipMaxMinutes"),
     speedPresets,
     shortcuts,
     domainOverrides,
@@ -744,7 +747,7 @@ function init() {
   });
 
   // Cualquier edición en los campos generales cuenta como cambio sin guardar.
-  ["fps", "multiFrameCount", "speedStep", "seekSeconds", "volumeMax", "volumeStep"].forEach((id) =>
+  ["fps", "multiFrameCount", "speedStep", "seekSeconds", "volumeMax", "volumeStep", "clipMaxMinutes"].forEach((id) =>
     q(id).addEventListener("input", markDirty)
   );
   ["showOverlay", "frameStepAudio", "rememberSpeedPerDomain", "wheelSpeedControl", "rememberVolumePerDomain"].forEach(
@@ -851,6 +854,61 @@ function init() {
 
 
   q("resetAllBtn").addEventListener("click", handleResetAllClick);
+
+  q("altLayoutBtn").addEventListener("click", applyAltLayoutShortcuts);
+  detectAltLayout();
+
+  // Aviso del navegador al cerrar o recargar la pestaña con cambios sin guardar.
+  window.addEventListener("beforeunload", (e) => {
+    if (!dirty) return;
+    e.preventDefault();
+    e.returnValue = "";
+  });
+}
+
+// ---------- Atajos alternativos para teclados con AltGr ----------
+// Si el navegador deja leer la distribución del teclado (Keyboard API), se destaca el aviso cuando
+// las teclas [ ] \ de la posición US no producen esos caracteres. El aviso se ve siempre igualmente:
+// la API no existe en todos los navegadores ni con todas las distribuciones.
+function detectAltLayout() {
+  if (!navigator.keyboard || typeof navigator.keyboard.getLayoutMap !== "function") return;
+  navigator.keyboard
+    .getLayoutMap()
+    .then((map) => {
+      const needsAltGr = map.get("BracketLeft") !== "[" || map.get("BracketRight") !== "]" || map.get("Backslash") !== "\\";
+      q("altLayoutDetected").classList.toggle("hidden", !needsAltGr);
+      q("altLayoutBox").classList.toggle("highlight", needsAltGr);
+    })
+    .catch(() => {});
+}
+
+// Pone los atajos de ALT_LAYOUT_SHORTCUTS (settings.js) en las acciones globales que siguen con su
+// atajo de fábrica, sin pisar nada personalizado ni crear choques. Queda como cambio sin guardar.
+function applyAltLayoutShortcuts() {
+  if (!settings.shortcuts) settings.shortcuts = {};
+  const applied = [];
+  const skipped = [];
+  Object.keys(ALT_LAYOUT_SHORTCUTS).forEach((id) => {
+    const combo = ALT_LAYOUT_SHORTCUTS[id];
+    const customized = Object.prototype.hasOwnProperty.call(settings.shortcuts, id) && settings.shortcuts[id] !== combo;
+    const clash = Object.keys(ACTION_DEFS).some(
+      (other) => other !== id && shortcutsEqual(effectiveGlobalShortcut(settings, other), combo)
+    );
+    if (customized || clash) {
+      skipped.push(resolveActionLabel(settings, id));
+      return;
+    }
+    settings.shortcuts[id] = combo;
+    applied.push(id);
+  });
+  if (applied.length) markDirty();
+  if (currentScope !== "global") switchScope("global");
+  else renderShortcuts();
+  const msg = q("altLayoutMsg");
+  let text = T(lang(), "options.altLayout.done", { n: applied.length });
+  if (skipped.length) text += " " + T(lang(), "options.altLayout.skipped", { list: skipped.join(", ") });
+  msg.textContent = text;
+  msg.classList.remove("hidden");
 }
 
 init();
