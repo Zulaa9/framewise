@@ -99,6 +99,10 @@
       <input type="checkbox" id="showOverlay" />
       <label for="showOverlay" data-i18n="options.showOverlay.label">Mostrar aviso en pantalla al usar un atajo</label>
     </div>
+    <div class="field">
+      <label for="clipMaxMinutes" data-i18n="options.clipMaxMinutes.label">Duración máxima de un clip grabado, en minutos</label>
+      <input type="number" id="clipMaxMinutes" min="0" max="120" step="1" />
+    </div>
     <div class="field checkbox">
       <input type="checkbox" id="frameStepAudio" />
       <label for="frameStepAudio" data-i18n="options.frameStepAudio.label">Reproducir sonido real al pasar de fotograma a fotograma</label>
@@ -115,6 +119,12 @@
       <input type="text" id="newDomainInput" data-i18n-placeholder="options.newDomainInput.placeholder" />
       <button id="addDomainBtn" data-i18n="options.addDomainBtn">＋ Añadir dominio</button>
       <button id="removeDomainBtn" class="danger hidden" data-i18n="options.removeDomainBtn">Eliminar este dominio</button>
+    </div>
+
+    <div id="altLayoutBox" class="alt-layout">
+      <p><span id="altLayoutDetected" class="alt-layout-detected hidden" data-i18n="options.altLayout.detected"></span> <span data-i18n="options.altLayout.hint"></span></p>
+      <button type="button" id="altLayoutBtn" data-i18n="options.altLayout.btn">Usar atajos alternativos</button>
+      <p id="altLayoutMsg" class="hint hidden" role="status"></p>
     </div>
 
     <div id="shortcutList"></div>
