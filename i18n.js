@@ -5,7 +5,7 @@
 // "es" es el idioma por defecto histórico de la extensión (nunca cambia para quien no toque nada
 // — ver "lang" en SYNC_DEFAULTS, settings.js). "{clave}" dentro de un string se sustituye vía el
 // segundo argumento de T(); ver ejemplos de uso en popup.js/options.js/content.js.
-const STRINGS = {
+var STRINGS = {
   es: {
     // ---------- Popup: cabecera y avisos ----------
     "popup.pauseBtn.off": "Desactivar los atajos de teclado de Framewise en este sitio (por si chocan con los del sitio)",
@@ -176,6 +176,22 @@ const STRINGS = {
     // ---------- Overlay en pantalla (content.js) ----------
     "overlay.volumeUnavailable": "⚠ El volumen de la extensión no está disponible en este vídeo",
     "overlay.volume": "🔊 Volumen (extensión): {percent}%",
+    "overlay.volumeNeedsGesture": "⚠ Haz clic una vez en la página (o pulsa una tecla) y vuelve a intentarlo: el navegador no deja tocar el audio hasta entonces",
+    "overlay.playBlocked": "⚠ El navegador no ha dejado reproducir el vídeo",
+    "overlay.captureNotReady": "⚠ El vídeo aún no tiene imagen que capturar",
+    "popup.loading": "Buscando vídeo…",
+    "popup.speedSlider.aria": "Velocidad de reproducción",
+    "popup.volumeSlider.aria": "Volumen de la extensión",
+    "popup.clearDomainFps.label": "Quitar",
+    "popup.clearDomainFps.title": "Dejar de fijar el FPS en este sitio y volver a la detección automática",
+    "popup.useDetectedFps.none": "Todavía no se ha detectado el FPS: reproduce el vídeo unos segundos a velocidad normal",
+    "popup.volume.unavailable": "El volumen de la extensión no está disponible en este vídeo (origen cruzado sin CORS)",
+    "options.unsaved": "● Cambios sin guardar",
+    "options.alert.saveFailed": "No se ha podido guardar la configuración: {msg}",
+    "options.warn.reserved": "⚠ \"{combo}\" lo usa el propio navegador y normalmente no llega a la página",
+    "options.warn.altgr": "⚠ \"{combo}\" usa Ctrl+Alt: en teclados europeos AltGr se detecta igual y puede saltar al escribir caracteres como @ o €",
+    "options.err.pausedDomainsType": "\"pausedDomains\" debería ser un objeto (dominio → true).",
+    "options.importBtn.aria": "Importar configuración desde un archivo JSON",
     "overlay.loadingSegment": "⏳ Cargando ese tramo…",
     "overlay.seekBlocked": "⚠ No se puede retroceder más allá de lo cargado en este punto",
     "overlay.frameStep": "{dir} {sign}{frames} fotograma  ·  {time}",
@@ -366,6 +382,22 @@ const STRINGS = {
 
     "overlay.volumeUnavailable": "⚠ The extension's volume isn't available on this video",
     "overlay.volume": "🔊 Volume (extension): {percent}%",
+    "overlay.volumeNeedsGesture": "⚠ Click the page once (or press a key) and try again: the browser blocks audio changes until then",
+    "overlay.playBlocked": "⚠ The browser didn't allow the video to play",
+    "overlay.captureNotReady": "⚠ The video has no image to capture yet",
+    "popup.loading": "Looking for a video…",
+    "popup.speedSlider.aria": "Playback speed",
+    "popup.volumeSlider.aria": "Extension volume",
+    "popup.clearDomainFps.label": "Remove",
+    "popup.clearDomainFps.title": "Stop fixing the FPS on this site and go back to automatic detection",
+    "popup.useDetectedFps.none": "The FPS hasn't been detected yet: play the video for a few seconds at normal speed",
+    "popup.volume.unavailable": "The extension's volume isn't available on this video (cross-origin without CORS)",
+    "options.unsaved": "● Unsaved changes",
+    "options.alert.saveFailed": "Couldn't save the configuration: {msg}",
+    "options.warn.reserved": "⚠ \"{combo}\" is used by the browser itself and usually never reaches the page",
+    "options.warn.altgr": "⚠ \"{combo}\" uses Ctrl+Alt: on European keyboards AltGr is detected the same way and may fire while typing characters like @ or €",
+    "options.err.pausedDomainsType": "\"pausedDomains\" should be an object (domain → true).",
+    "options.importBtn.aria": "Import configuration from a JSON file",
     "overlay.loadingSegment": "⏳ Loading that part…",
     "overlay.seekBlocked": "⚠ Can't seek further back than what's loaded at this point",
     "overlay.frameStep": "{dir} {sign}{frames} frame  ·  {time}",
@@ -449,5 +481,23 @@ function applyI18n(lang, root) {
   root.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
     el.placeholder = T(lang, el.getAttribute("data-i18n-placeholder"));
   });
+  root.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
+    el.setAttribute("aria-label", T(lang, el.getAttribute("data-i18n-aria-label")));
+  });
+  // Botones que solo muestran un icono (emoji): el lector de pantalla anunciaría el nombre del
+  // emoji ("botón ⏯") en vez de la acción. Se les da como nombre accesible su propio título.
+  root.querySelectorAll("button[data-i18n-title]").forEach((el) => syncIconButtonLabel(el));
   (root.ownerDocument || root).documentElement.lang = lang;
+}
+
+// Nombre accesible de un botón que solo tiene un icono: su title. Los botones con texto propio
+// (letras) ya se nombran solos y no se tocan. popup.js lo llama también cuando cambia un title a mano.
+function syncIconButtonLabel(el) {
+  if (!el) return;
+  const text = (el.textContent || "").trim();
+  if (/\p{L}/u.test(text)) {
+    el.removeAttribute("aria-label");
+    return;
+  }
+  if (el.title) el.setAttribute("aria-label", el.title);
 }
