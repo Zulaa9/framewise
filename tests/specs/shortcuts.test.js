@@ -36,7 +36,7 @@ test("j y l saltan los segundos configurados (5 s)", async () => {
   await resetVideo(6);
   await page.keyboard.press("l");
   await h.waitFor(() => video((v) => Math.abs(v.currentTime - 11) < 0.05 && !v.seeking));
-  await h.sleep(300); // un salto nuevo mientras el anterior sigue en curso se ignora a propósito
+  await h.sleep(300);
   assert.ok(Math.abs((await video((v) => v.currentTime)) - 11) < 0.05);
   await page.keyboard.press("j");
   await h.waitFor(() => video((v) => Math.abs(v.currentTime - 6) < 0.05));

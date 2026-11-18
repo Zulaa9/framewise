@@ -9,6 +9,7 @@ const ROOT = path.resolve(__dirname, "..");
 const INCLUDE = [
   "manifest.json", "background.js", "content.js", "settings.js", "i18n.js",
   "popup.html", "popup.js", "popup.css", "options.html", "options.js", "options.css", "overlay.css",
+  "recover.html", "recover.js", "recover.css",
   "LICENSE", "icons", "_locales"
 ];
 
