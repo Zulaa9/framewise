@@ -168,6 +168,27 @@ function applyCapabilities(caps, loopBroken) {
   setButtonWarning("toggleLoop", loopBroken, T(lang(), "popup.toggleLoop.title"), T(lang(), "popup.cap.loopBroken"));
 }
 
+// Con un <audio> (sin ningún vídeo en la página) no hay imagen: los controles de fotograma, captura,
+// clip y PiP se deshabilitan con su motivo, y la sección de FPS se oculta. El resto (velocidad,
+// volumen, saltos, bucle, silencio) funciona igual.
+const VIDEO_ONLY_BUTTONS = ["frameBack", "frameForward", "togglePip", "screenshot", "recordClip"];
+
+function applyMediaKind(isAudio) {
+  document.body.classList.toggle("audio-mode", isAudio);
+  if (isAudio) {
+    VIDEO_ONLY_BUTTONS.forEach((id) => {
+      q(id).disabled = true;
+      setTitle(q(id), T(lang(), "popup.cap.audio"));
+    });
+    q("stateBadge").textContent = `${T(lang(), "popup.kind.audio")} · ${q("stateBadge").textContent}`;
+  } else {
+    ["frameBack", "frameForward"].forEach((id) => {
+      q(id).disabled = false;
+      setTitle(q(id), T(lang(), `popup.${id}.title`));
+    });
+  }
+}
+
 // Mientras el popup está abierto sin más, refresca solo el tiempo/estado de reproducción (nada
 // del slider ni de los presets, para no interferir si el usuario está interactuando con ellos).
 // Si no había vídeo, cada tick vuelve a buscarlo: el popup ya no se queda en "No se encontró vídeo"
@@ -193,7 +214,8 @@ async function tickTime() {
       return;
     }
     consecutiveTickFailures = 0;
-    q("stateBadge").textContent = T(lang(), resp.paused ? "popup.state.paused" : "popup.state.playing");
+    const state = T(lang(), resp.paused ? "popup.state.paused" : "popup.state.playing");
+    q("stateBadge").textContent = resp.kind === "audio" ? `${T(lang(), "popup.kind.audio")} · ${state}` : state;
     q("timeBadge").textContent = `${formatTime(resp.currentTime)} / ${formatTime(resp.duration)}`;
   } finally {
     tickBusy = false;
@@ -243,6 +265,7 @@ async function refreshState() {
   q("recordClip").classList.toggle("recording", !!resp.recording);
   renderPresets(resp.playbackRate);
   applyCapabilities(resp.capabilities, resp.loopBroken);
+  applyMediaKind(resp.kind === "audio");
 
   const volumeMax = resp.volumeMax || 300;
   q("volumeSlider").max = volumeMax;
