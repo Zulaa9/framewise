@@ -262,3 +262,6 @@ footer a:hover { text-decoration: underline; }
   font-size: 11px;
 }
 .fps-row button:hover { background: color-mix(in srgb, var(--color-ink) 6%, var(--color-surface)); }
+
+/* Con un <audio> no hay fotogramas: la sección de FPS no aplica. */
+body.audio-mode .fps-only { display: none !important; }
