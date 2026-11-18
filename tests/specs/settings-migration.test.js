@@ -120,7 +120,7 @@ test("valores imposibles guardados no rompen nada: se acotan solo en memoria", a
   assert.equal(s.fps, 1);
   assert.equal(s.multiFrameCount, 1);
   assert.ok(Array.isArray(s.speedPresets) && s.speedPresets.length > 0);
-  assert.equal(s.volumeMax, 1000);
+  assert.equal(s.volumeMax, 1e9, "el volumen máximo no tiene tope superior (decisión de producto)");
   const after = await raw();
   assert.equal(after.sync.fps, 0, "lo guardado no se reescribe al cargar");
 });

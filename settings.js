@@ -394,7 +394,9 @@ var NUMERIC_LIMITS = {
   speedStep: [0.01, 2],
   seekSeconds: [0.1, 600],
   multiFrameCount: [1, 500],
-  volumeMax: [100, 1000],
+  // Sin tope superior a propósito: el usuario decide cuánto amplificar (con audio muy bajo, ×10 a
+  // veces no basta). Solo se exige un número válido y al menos el 100 %.
+  volumeMax: [100, Infinity],
   volumeStep: [1, 100],
   clipMaxMinutes: [0, 120]
 };
