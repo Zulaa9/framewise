@@ -93,7 +93,16 @@
     }
 
     const videos = currentVideos();
-    if (videos.length === 0) return null;
+    if (videos.length === 0) {
+      // Sin ningún <video> en el documento, se controla un <audio> "de verdad" (ver usableAudio):
+      // podcasts, radio, audiolibros. Con algún vídeo presente, el audio se ignora siempre, así que
+      // en las páginas de vídeo nada cambia.
+      const audio = pickAudio();
+      if (!audio) return null;
+      initVideo(audio);
+      notifyVideoFound(audio);
+      return audio;
+    }
     let v;
     if (videos.length === 1) v = videos[0];
     else {
@@ -118,10 +127,39 @@
     const list = Array.from(document.querySelectorAll("video"));
     knownVideos.forEach((v) => {
       if (!v.isConnected) knownVideos.delete(v);
-      else if (!list.includes(v)) list.push(v);
+      else if (v.tagName === "VIDEO" && !list.includes(v)) list.push(v);
     });
     return list;
   }
+
+  // ---------- <audio> ----------
+  // Solo cuenta un <audio> que es contenido real y no un efecto de sonido de la interfaz (avisos de
+  // chat, clics…): con controles visibles, o que se está reproduciendo o ya se reprodujo, y que dura
+  // más de 30 s (o es una emisión en directo, duración infinita). Así una web con atajos propios en
+  // j/k/l (correo, lectores de feeds…) no pierde esas teclas por tener un sonido de notificación.
+  const AUDIO_MIN_DURATION = 30;
+
+  function usableAudio(a) {
+    if (!a || !a.isConnected || a.tagName !== "AUDIO") return false;
+    if (!(a.duration > AUDIO_MIN_DURATION)) return false;
+    return a.controls || !a.paused || a.currentTime > 0;
+  }
+
+  function pickAudio() {
+    const list = Array.from(document.querySelectorAll("audio")).filter(usableAudio);
+    if (!list.length) return null;
+    const playing = list.find((a) => !a.paused && !a.ended);
+    return playing || list[0];
+  }
+
+  function isAudioElement(el) {
+    return !!el && el.tagName === "AUDIO";
+  }
+
+  // Acciones que solo tienen sentido con imagen.
+  const VIDEO_ONLY_ACTIONS = new Set([
+    "frameBack", "frameForward", "frameBackMulti", "frameForwardMulti", "screenshot", "recordClip", "togglePip"
+  ]);
 
   function notifyVideoFound(v) {
     if (notifiedVideos.has(v)) return;
@@ -166,6 +204,10 @@
   // tiempo, a diferencia del bucle o el retroceso más allá del buffer, que solo se sabe al probar).
   function detectCapabilities(v) {
     const caps = v.__fscCapabilities;
+    if (isAudioElement(v)) {
+      caps.audio = true; // sin imagen: ni fotogramas, ni captura, ni clip, ni PiP
+      return;
+    }
 
     caps.frameAudio = typeof v.requestVideoFrameCallback === "function";
     caps.pip = !!(document.pictureInPictureEnabled && !v.disablePictureInPicture);
@@ -212,6 +254,14 @@
       notifyVideoFound(v);
     });
     scanShadowRootsThrottled();
+    // Un frame con solo audio también se anuncia, para que el popup lo encuentre.
+    if (currentVideos().length === 0) {
+      const audio = pickAudio();
+      if (audio) {
+        initVideo(audio);
+        notifyVideoFound(audio);
+      }
+    }
   }
 
   // ---------- Vídeos dentro de shadow DOM ----------
@@ -433,16 +483,83 @@
     setVolume(video, next);
   }
 
+  // Volumen recordado del sitio. El 100 % (neutro) se restaura siempre: no necesita grafo de audio.
+  // Cualquier otro valor necesita conectar el vídeo a Web Audio, y hacerlo antes de que el usuario
+  // haya interactuado con la página dejaría el vídeo mudo (política de autoplay: el AudioContext
+  // nace suspendido y no se puede reanudar). Por eso se restaura solo si la página YA tiene
+  // activación de usuario (navigator.userActivation.hasBeenActive), y si no, se deja pendiente y se
+  // aplica en el primer clic o tecla del usuario en la página. Si el navegador aun así no deja
+  // arrancar el audio, no se conecta nada y el vídeo sigue sonando como siempre.
+  const pendingVolumeRestores = new Set();
+  let gestureListenerAttached = false;
+
+  function hasUserActivation() {
+    const activation = navigator.userActivation;
+    return !activation || !!activation.hasBeenActive;
+  }
+
   function applyDomainVolume(v) {
     if (!settings || !settings.rememberVolumePerDomain) return;
     const remembered = settings.domainVolumes[domain];
-    if (remembered == null) return;
-    // Solo se restaura solo si es el valor neutro (100% = no requiere crear ningún grafo de
-    // audio). Cualquier otro valor necesitaría construir el grafo de Web Audio antes de que haya
-    // habido un gesto de usuario en la página, lo que podría silenciar el vídeo por completo
-    // (política de autoplay del navegador) — se recupera en cuanto el usuario ajuste el volumen
-    // de la extensión una vez.
-    if (remembered === 100) setVolume(v, remembered, { silent: true });
+    if (typeof remembered !== "number" || !isFinite(remembered)) return;
+    if (remembered === 100) {
+      setVolume(v, remembered, { silent: true });
+      return;
+    }
+    if (v.__fscGain || v.__fscAudioUnavailable) {
+      if (v.__fscGain) setVolume(v, remembered, { silent: true });
+      return;
+    }
+    if (hasUserActivation()) {
+      restoreVolumeWhenAudioRuns(v, remembered);
+      return;
+    }
+    pendingVolumeRestores.add(v);
+    attachGestureListener();
+  }
+
+  // Reanuda el AudioContext compartido y, solo cuando de verdad está "running", conecta el vídeo
+  // y aplica la ganancia (createMediaElementSource es irreversible: nunca con el contexto mudo).
+  function restoreVolumeWhenAudioRuns(v, percent) {
+    let ctx;
+    try {
+      ctx = getAudioContext();
+    } catch (err) {
+      ctx = null;
+    }
+    if (!ctx) return;
+    const apply = () => {
+      if (ctx.state !== "running" || !v.isConnected || evicted) return;
+      if (!settings || settings.domainVolumes[domain] !== percent) return; // cambió mientras tanto
+      setVolume(v, percent, { silent: true });
+    };
+    if (ctx.state === "running") apply();
+    else ctx.resume().then(apply, () => {});
+  }
+
+  function attachGestureListener() {
+    if (gestureListenerAttached) return;
+    gestureListenerAttached = true;
+    window.addEventListener("pointerdown", onFirstGesture, true);
+    window.addEventListener("keydown", onFirstGesture, true);
+  }
+
+  function detachGestureListener() {
+    if (!gestureListenerAttached) return;
+    gestureListenerAttached = false;
+    window.removeEventListener("pointerdown", onFirstGesture, true);
+    window.removeEventListener("keydown", onFirstGesture, true);
+  }
+
+  function onFirstGesture() {
+    detachGestureListener();
+    const list = Array.from(pendingVolumeRestores);
+    pendingVolumeRestores.clear();
+    const remembered = settings && settings.rememberVolumePerDomain ? settings.domainVolumes[domain] : null;
+    if (typeof remembered !== "number" || remembered === 100) return;
+    list.forEach((v) => {
+      if (v.isConnected && !v.__fscGain && !v.__fscAudioUnavailable) restoreVolumeWhenAudioRuns(v, remembered);
+    });
   }
 
   function persistDomainVolume(percent) {
@@ -646,6 +763,8 @@
     showOverlay(T(currentLang(settings), "overlay.nativePause", { time: formatTime(e.target.currentTime) }));
   }
   function onNativePlay(e) {
+    // Un <audio> que empieza a sonar puede pasar a ser "controlable" (ver usableAudio).
+    if (isAudioElement(e.target) && !e.target.__fscInit) scheduleScan();
     if (e.target.tagName !== "VIDEO" || Date.now() < suppressGenericOverlayUntil) return;
     showOverlay(T(currentLang(settings), "overlay.nativePlay", { time: formatTime(e.target.currentTime) }));
   }
@@ -852,21 +971,44 @@
     }
   }
 
+  // Un salto pulsado mientras el anterior sigue resolviéndose ya no se descarta: se acumula y se
+  // aplica de una vez en cuanto termina el actual (pulsar l tres veces seguidas = +15 s, como se
+  // espera). Solo se acumulan pulsaciones sueltas, nunca la repetición al mantener la tecla (eso
+  // seguiría saltando después de soltarla), con un tope, y si un salto falla (tramo no cargado o
+  // con DRM que no se deja buscar) se descarta lo acumulado: nunca se encadenan saltos sobre un
+  // reproductor que ya ha dado problemas — la protección de seekWithGuard sigue siendo la misma.
   let seekBusy = false;
+  let pendingSeekSecs = 0;
+  const MAX_QUEUED_SEEKS = 10;
 
-  async function seek(video, secs) {
-    if (seekBusy) return;
+  async function seek(video, secs, opts) {
+    if (seekBusy) {
+      if (opts && opts.queue) {
+        const cap = Math.abs(secs) * MAX_QUEUED_SEEKS;
+        pendingSeekSecs = Math.max(-cap, Math.min(cap, pendingSeekSecs + secs));
+      }
+      return;
+    }
     seekBusy = true;
+    pendingSeekSecs = 0;
     try {
-      const target = clampTime(video, video.currentTime + secs);
-      const res = await seekWithGuard(video, target);
-      // Si el salto falló, seekWithGuard ya dejó su propio aviso — no se tapa con el de "±N s".
-      if (!res.ok) return;
-      showOverlay(T(currentLang(settings), "overlay.seek", {
-        icon: secs > 0 ? "⏩" : "⏪",
-        secs: Math.abs(secs),
-        time: formatTime(video.currentTime)
-      }));
+      let step = secs;
+      while (step) {
+        const target = clampTime(video, video.currentTime + step);
+        const res = await seekWithGuard(video, target);
+        // Si el salto falló, seekWithGuard ya dejó su propio aviso — no se tapa con el de "±N s".
+        if (!res.ok) {
+          pendingSeekSecs = 0;
+          return;
+        }
+        showOverlay(T(currentLang(settings), "overlay.seek", {
+          icon: step > 0 ? "⏩" : "⏪",
+          secs: Math.round(Math.abs(step) * 100) / 100,
+          time: formatTime(video.currentTime)
+        }));
+        step = pendingSeekSecs;
+        pendingSeekSecs = 0;
+      }
     } finally {
       seekBusy = false;
     }
@@ -882,7 +1024,7 @@
   // resto de saltos de la extensión.
   async function onNativeEnded(e) {
     const v = e.target;
-    if (v.tagName !== "VIDEO" || !v.__fscManualLoop) return;
+    if ((v.tagName !== "VIDEO" && v.tagName !== "AUDIO") || !v.__fscManualLoop) return;
     suppressGenericOverlayUntil = Date.now() + 2000;
     const res = await seekWithGuard(v, 0);
     if (res.ok) {
@@ -979,7 +1121,7 @@
     return candidates.find((t) => typeof MediaRecorder !== "undefined" && MediaRecorder.isTypeSupported(t)) || "";
   }
 
-  function saveRecording(chunks, mimeType, startTime) {
+  function saveRecording(chunks, mimeType, startTime, reasonKey) {
     if (!chunks.length) {
       showOverlay(T(currentLang(settings), "overlay.recordingEmpty"));
       return;
@@ -987,11 +1129,96 @@
     const blob = new Blob(chunks, { type: mimeType || "video/webm" });
     chunks.length = 0; // los trozos ya están en el Blob: no retener dos copias en memoria
     downloadBlob(blob, `clip_${Math.round(startTime * 1000)}ms.webm`);
-    showOverlay(T(currentLang(settings), "overlay.clipSaved"));
+    showOverlay(reasonKey ? reasonKey() : T(currentLang(settings), "overlay.clipSaved"));
+  }
+
+  // ---------- Copia de seguridad del clip en el service worker ----------
+  // Si la pestaña navega a otra página o se cierra con una grabación en marcha, el content script
+  // muere con ella y lo grabado se perdía. Ahora cada trozo (uno por segundo) se envía además, por un
+  // puerto, al service worker, que lo guarda en IndexedDB de la extensión. Si el puerto se cierra sin
+  // el aviso de "terminado" (la página se fue), el service worker ofrece el clip en una página propia
+  // de la extensión (recover.html). No necesita ningún permiso nuevo. Si el service worker se
+  // reinicia a mitad, el puerto se reabre solo y se sigue enviando con el mismo id de clip.
+  function createClipBackup(filename, mimeType) {
+    const id = Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 10);
+    let port = null;
+    let seq = 0;
+    let finished = false;
+    let queue = Promise.resolve(); // mantiene el orden de los trozos aunque la conversión sea asíncrona
+
+    function connect() {
+      if (finished || evicted) return;
+      try {
+        port = chrome.runtime.connect({ name: "fsc-clip" });
+      } catch (err) {
+        port = null; // contexto de extensión inválido: sin copia, la grabación local sigue igual
+        return;
+      }
+      port.onDisconnect.addListener(() => {
+        void chrome.runtime.lastError;
+        port = null;
+        if (!finished) setTimeout(connect, 200);
+      });
+      post({ type: "start", id, filename, mimeType, page: location.href.slice(0, 500) });
+    }
+
+    function post(msg) {
+      if (!port) return;
+      try {
+        port.postMessage(msg);
+      } catch (err) {}
+    }
+
+    function toBase64(blob) {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const url = String(reader.result || "");
+          // El tipo del data: URL puede llevar comas ("video/webm;codecs=vp9,opus"): se corta por
+          // el marcador ";base64,", no por la primera coma.
+          const at = url.indexOf(";base64,");
+          resolve(at >= 0 ? url.slice(at + 8) : null);
+        };
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    connect();
+    return {
+      add(blob) {
+        const n = seq++;
+        queue = queue.then(async () => {
+          const data = await toBase64(blob);
+          if (data) post({ type: "chunk", id, seq: n, data });
+        });
+      },
+      // Se llama cuando el clip ya se ha descargado normalmente: la copia ya no hace falta.
+      done() {
+        queue = queue.then(() => {
+          finished = true;
+          post({ type: "done", id });
+          if (port) {
+            try { port.disconnect(); } catch (err) {}
+          }
+          port = null;
+        });
+      }
+    };
+  }
+
+  // Duración máxima configurable (clipMaxMinutes, 0 = sin límite): al llegar, se para y se guarda.
+  function clipLimitMs() {
+    const min = settings && typeof settings.clipMaxMinutes === "number" ? settings.clipMaxMinutes : 10;
+    return min > 0 ? min * 60000 : 0;
   }
 
   function startRecording(video) {
     if (mediaRecorder) return; // ya hay una grabación en marcha
+    if (video.tagName !== "VIDEO") {
+      showOverlay(T(currentLang(settings), "overlay.notForAudio"));
+      return;
+    }
     let stream;
     try {
       stream =
@@ -1012,16 +1239,31 @@
     const recorder = mediaRecorder;
     const chunks = [];
     const startTime = video.currentTime;
+    const backup = createClipBackup(`clip_${Math.round(startTime * 1000)}ms.webm`, recorder.mimeType || "video/webm");
+    let stopReason = null;
     recordedVideo = video;
+    const limitMs = clipLimitMs();
+    const limitMinutes = limitMs / 60000;
+    const limitTimer = limitMs
+      ? setTimeout(() => {
+          stopReason = () => T(currentLang(settings), "overlay.clipLimitReached", { min: limitMinutes });
+          stopRecording();
+        }, limitMs)
+      : null;
     recorder.addEventListener("dataavailable", (e) => {
-      if (e.data && e.data.size > 0) chunks.push(e.data);
+      if (e.data && e.data.size > 0) {
+        chunks.push(e.data);
+        backup.add(e.data);
+      }
     });
     recorder.addEventListener("stop", () => {
+      clearTimeout(limitTimer);
       stream.getTracks().forEach((t) => t.stop());
       video.removeEventListener("emptied", onRecordedSourceGone);
       if (mediaRecorder === recorder) mediaRecorder = null;
       if (recordedVideo === video) recordedVideo = null;
-      saveRecording(chunks, recorder.mimeType, startTime);
+      saveRecording(chunks, recorder.mimeType, startTime, stopReason);
+      backup.done();
     });
     // Si el grabador falla a mitad (p. ej. el sitio cambia las pistas del vídeo), se para y se
     // guarda lo grabado hasta ese momento en vez de dejar el botón en "grabando" para siempre.
@@ -1058,6 +1300,10 @@
   }
 
   function runAction(id, video, opts) {
+    if (isAudioElement(video) && VIDEO_ONLY_ACTIONS.has(id)) {
+      showOverlay(T(currentLang(settings), "overlay.notForAudio"));
+      return;
+    }
     switch (id) {
       case "frameBack": return frameStep(video, -1, opts);
       case "frameForward": return frameStep(video, 1, opts);
@@ -1067,8 +1313,8 @@
       case "speedDown": return stepSpeed(video, -1);
       case "speedReset": return setSpeed(video, 1);
       case "togglePlay": return togglePlay(video);
-      case "seekBack": return seek(video, -settings.seekSeconds);
-      case "seekForward": return seek(video, settings.seekSeconds);
+      case "seekBack": return seek(video, -settings.seekSeconds, opts);
+      case "seekForward": return seek(video, settings.seekSeconds, opts);
       case "toggleLoop": return toggleLoop(video);
       case "togglePip": return togglePip(video);
       case "toggleMute": return toggleMute(video);
@@ -1219,7 +1465,7 @@
     e.preventDefault();
     e.stopPropagation();
     if (e.repeat) return; // los repeats del SO se ignoran, usamos nuestro propio temporizador
-    runAction(match.id, video);
+    runAction(match.id, video, { queue: true });
     startRepeatIfNeeded(match.id, match.combo, video);
   }
   document.addEventListener("keydown", onKeydown, true);
@@ -1273,7 +1519,7 @@
 
   function onRateChange(e) {
     const v = e.target;
-    if (!v || v.tagName !== "VIDEO" || !v.__fscInit) return;
+    if (!v || (v.tagName !== "VIDEO" && v.tagName !== "AUDIO") || !v.__fscInit) return;
     if (activeVideo() !== v) return;
     reportSpeed(v.playbackRate);
   }
@@ -1476,13 +1722,15 @@
       sendResponse({
         ok: true,
         playing: !video.paused && !video.ended && video.readyState > 2,
-        area: video.clientWidth * video.clientHeight
+        area: video.clientWidth * video.clientHeight,
+        audio: isAudioElement(video)
       });
       return;
     }
     if (msg.type === "getState") {
       sendResponse({
         ok: true,
+        kind: isAudioElement(video) ? "audio" : "video",
         playbackRate: video.playbackRate,
         paused: video.paused,
         currentTime: video.currentTime,
@@ -1508,7 +1756,7 @@
         sendResponse({ ok: false, error: "unknown-action" });
         return;
       }
-      if (msg.id === "togglePip") {
+      if (msg.id === "togglePip" && !isAudioElement(video)) {
         togglePip(video).then(() => sendResponse({ ok: true, pip: document.pictureInPictureElement === video }));
         return true;
       }
@@ -1558,6 +1806,7 @@
     document.removeEventListener("wheel", onWheel, { passive: false });
     wheelAttached = false;
     document.removeEventListener("ratechange", onRateChange, true);
+    detachGestureListener();
     if (shadowScanTimer !== null) clearTimeout(shadowScanTimer);
     removeUi();
     stopVideoPicker();
