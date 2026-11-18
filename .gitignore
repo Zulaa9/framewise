@@ -3,3 +3,5 @@ Thumbs.db
 *.log
 *.zip
 node_modules/
+dist/
+tests/node_modules/

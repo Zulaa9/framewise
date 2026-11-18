@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Single video</title></head>
+<body>
+  <video id="v" src="sample-30fps.webm" width="320" height="180" controls preload="auto"></video>
+  <p><input id="txt" type="text"> <textarea id="area"></textarea> <select id="sel"><option>j</option><option>k</option><option>l</option></select></p>
+  <div id="editable" contenteditable="true">editable</div>
+  <shadow-field id="sf"></shadow-field>
+  <script>
+    customElements.define("shadow-field", class extends HTMLElement {
+      constructor() { super(); this.attachShadow({ mode: "open" }).innerHTML = '<input id="inner" type="text">'; }
+    });
+  </script>
+</body></html>
