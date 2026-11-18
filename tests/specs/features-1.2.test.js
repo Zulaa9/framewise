@@ -297,3 +297,30 @@ test("<audio> con un <video> en la página: manda el vídeo", async () => {
   assert.equal(st.kind, "video");
   await page.close();
 });
+
+test("volumen máximo sin tope superior: 5000 % configurado se respeta", async () => {
+  await setStorage("sync", { volumeMax: 5000 });
+  const page = await h.openFixture(ext, srv.originA + "/single.html");
+  const tabId = await h.tabIdOf(ext, page);
+  await page.mouse.click(5, 400); // activación de usuario para Web Audio
+  await h.sendToTab(ext, tabId, { type: "setVolume", percent: 5000 });
+  const st = await h.waitFor(async () => {
+    const s = await getState(tabId);
+    return s && s.volume === 5000 ? s : null;
+  });
+  assert.ok(st, "5000 %");
+  assert.equal(st.volumeMax, 5000);
+  const options = await ext.context.newPage();
+  await options.goto(`chrome-extension://${ext.extensionId}/options.html`);
+  await options.waitForSelector(".shortcut-row");
+  assert.equal(await options.inputValue("#volumeMax"), "5000");
+  await options.fill("#volumeMax", "20000");
+  await options.click("#save");
+  await h.sleep(300);
+  const saved = await ext.sw.evaluate(() => new Promise((r) => chrome.storage.sync.get("volumeMax", r)));
+  assert.equal(saved.volumeMax, 20000, "guardar no lo recorta");
+  await options.close();
+  await page.close();
+  await removeStorage("sync", ["volumeMax"]);
+  await removeStorage("local", ["domainVolumes"]);
+});

@@ -543,7 +543,7 @@ function validateImportedSettings(raw) {
   // Los valores recordados por sitio se validan uno a uno, con los mismos límites que se usan al
   // aplicarlos: antes se copiaban tal cual y, p. ej., una velocidad de 1e9 hacía que el content
   // script lanzara una excepción al inicializar cada vídeo de ese sitio.
-  const domainMapLimits = { domainSpeeds: [SPEED_MIN, SPEED_MAX], domainFps: [1, 240], domainVolumes: [0, 1000] };
+  const domainMapLimits = { domainSpeeds: [SPEED_MIN, SPEED_MAX], domainFps: [1, 240], domainVolumes: [0, Infinity] };
   const domainMaps = {};
   for (const field of Object.keys(domainMapLimits)) {
     if (raw[field] !== undefined && !isPlainObject(raw[field])) {
