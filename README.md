@@ -31,6 +31,9 @@ across devices like any other setting. See `i18n.js` for the string dictionary a
 
 ## Features
 
+### Seeking
+- `j`/`l` (or the popup buttons) jump back/forward by the configured seconds and wait for each seek to really finish. Quick repeated presses are added up and applied as soon as the current seek completes (three quick `l` presses = three jumps), up to ten presses ahead; holding the key repeats at the seek's own pace and never keeps jumping after release. If a seek can't complete (unbuffered or DRM-protected segment), it reverts safely and any queued presses are dropped.
+
 ### Frame-by-frame navigation
 - Step one frame forward or backward, with real audio on the forward step (the video is briefly played and paused exactly on the target frame via `requestVideoFrameCallback`, instead of silently jumping).
 - Holding the forward key switches to real continuous playback instead of chaining discrete jumps, snapping back to the exact nearest frame on release.
@@ -48,7 +51,7 @@ across devices like any other setting. See `i18n.js` for the string dictionary a
 ### Volume amplification
 - An **independent** volume layer, on top of whatever the site's own player volume is set to — the two are intentionally not linked. Framewise's volume never reads or writes the native `video.volume` property.
 - 100% means "untouched"; anything else is a separate multiplier (0–300% by default, configurable) applied through a Web Audio `GainNode`, which is the only way to exceed the browser's native 0–100% ceiling.
-- Per-domain memory, with one safety rule: only the neutral 100% value is restored automatically on page load. Any other value requires one manual interaction first, because building the audio graph before a user gesture can leave the browser's autoplay policy muting the tab entirely.
+- Per-domain memory, with one safety rule: the neutral 100% value is restored immediately on page load; any other value is restored only once the page has had a user interaction (`navigator.userActivation.hasBeenActive`) — right away if it already has one, otherwise on your first click or key press on the page. Building the audio graph before a user gesture can leave the browser's autoplay policy muting the tab entirely, so Framewise only connects it once the audio context is actually running; if the browser still refuses, the video keeps playing untouched.
 - Not available on cross-origin video without CORS headers (a Web Audio API restriction, not something Framewise can bypass); the extension detects this and disables the control instead of failing silently.
 - If the page hasn't received any click or key press yet, the browser keeps Web Audio suspended. Framewise then leaves the video untouched and asks for one interaction first, instead of routing its audio into a muted graph. One shared `AudioContext` per page serves every video.
 
@@ -69,9 +72,12 @@ across devices like any other setting. See `i18n.js` for the string dictionary a
 
 ### Other utilities
 - Play/pause, mute, Picture-in-Picture.
+- `<audio>` players (podcasts, radio, audiobooks) on pages with no `<video>` at all: play/pause, j/k/l, speed (and its per-site memory), the independent volume layer, loop and mute work the same; frame stepping, capture, clip and PiP are disabled in the popup with the reason. To avoid stealing keys from sites with their own j/k/l shortcuts, an `<audio>` only counts if it lasts more than 30 s (or is a live stream) and either shows its controls or is/was playing — short interface sounds are ignored. Whenever a page has a `<video>`, audio elements are ignored entirely.
 - Loop, re-implemented manually (not via the native `loop` attribute, which can hang playback if the browser tries to seek back to a portion of the stream that's no longer buffered) — it uses the same stall-safe mechanism as frame stepping and reports a clear warning if it fails instead of breaking playback. Videos that the site itself loops (animated backgrounds, GIF-style clips) are left alone and shown as looping; toggling the loop off clears both.
 - Frame capture to PNG (disabled automatically when the source video is DRM-protected and the browser blocks canvas access).
 - Clip recording to WebM: click to start, click again to stop and download — records the video exactly as it's currently playing (same speed, same audio), via `HTMLMediaElement.captureStream()` + `MediaRecorder`. Disabled automatically for cross-origin video without CORS headers or DRM-protected content, for the same reason screenshots are. If the site swaps the video's source or removes the element while recording, the clip is closed and saved with what was recorded.
+  - Configurable maximum length (10 minutes by default, 0 = no limit): when reached, the clip is stopped and saved automatically, since a recording is held in memory until it stops.
+  - Crash-safe: while recording, each one-second chunk is also copied to the extension's own IndexedDB through the service worker. If the tab navigates away or is closed before you stop, Framewise opens a "Recovered clips" page (`recover.html`) in the background that downloads the clip and lets you download it again or delete it. Downloaded clips are cleaned up after a day, unclaimed ones after a week. No extra permission is involved.
 - On-screen overlay confirming each action, including pause/resume with an exact timestamp — this also fires when pausing with the site's own native controls, not only through Framewise. It is drawn inside a closed shadow root (page CSS can't hide or distort it, page scripts can't read it) and shown in the browser's top layer, so it stays visible over any fullscreen element, including a `<video>` put in fullscreen by its native controls.
 - Detachable popup window that stays open regardless of where you click, and an optional true always-on-top floating mode (Document Picture-in-Picture, Chrome/Edge 116+).
 - Configuration export/import as JSON, and a "reset everything" action with a two-step confirmation. Imported files are validated value by value (ranges, hostnames, known actions); per-domain pauses are part of the backup.
@@ -136,8 +142,12 @@ How keys are matched:
   layout and as `;` on a Spanish one), Framewise also matches the key by its physical position, so the
   defaults `Ctrl+Shift+,`, `Ctrl+Shift+.` and `Ctrl+Shift+\` work on any layout. This fallback never
   applies to letters, digits or unshifted keys, so other layouts (AZERTY, Dvorak…) are not reinterpreted.
-- On layouts where `[`, `]` or `\` need AltGr (Spanish, for example), the default speed shortcuts
-  `Ctrl+[`, `Ctrl+]` and `Ctrl+\` can't be typed; reassign them in Options.
+- On layouts where `[`, `]` or `\` need AltGr (Spanish, German, French…), the default speed shortcuts
+  `Ctrl+[`, `Ctrl+]`, `Ctrl+\` and the volume reset `Ctrl+Shift+\` can't be typed. Options offers a
+  one-click switch to `Ctrl+Shift+←` / `Ctrl+Shift+→` (speed), `Ctrl+Shift+Enter` (speed 1x) and
+  `Ctrl+Shift+Backspace` (volume 100%), highlighted when the browser reports such a keyboard layout. It only
+  touches actions you haven't customized, skips any combination another action already uses, and stays
+  an unsaved change until you press Save. The factory defaults themselves don't change.
 
 Click the toolbar icon for the quick popup (frame stepping, speed, volume, play/pause, capture, etc.), or the gear icon (or "Shortcuts for this site" from the popup) to open the full Options page.
 
@@ -148,12 +158,13 @@ Everything is adjustable from the Options page:
 - Speed presets (add/remove individually, or step in 0.25 increments anchored at 0), default speed increment, and whether speed is remembered per domain.
 - Volume maximum, step size, and whether it's remembered per domain.
 - FPS: global default, or fixed per domain (overrides live detection).
-- Seek length in seconds, multi-frame jump size, on-screen overlay toggle, frame-step audio toggle.
+- Seek length in seconds, multi-frame jump size, on-screen overlay toggle, frame-step audio toggle, maximum clip length.
 - Export the full configuration as JSON, import it back, or reset everything to defaults (double confirmation required).
 
 Changes on the Options page are applied with **Save changes**; an "Unsaved changes" marker shows when
 there is something pending. Changes made elsewhere meanwhile (the popup, a video tab remembering its
-speed) are merged in without discarding what you're editing.
+speed) are merged in without discarding what you're editing, and the browser asks for confirmation
+if you close or reload the page with changes still unsaved.
 
 ## Architecture
 
@@ -169,10 +180,11 @@ Manifest V3, no bundler, no runtime dependencies.
 | `popup.html/js/css` | Toolbar popup |
 | `options.html/js/css` | Options page |
 | `overlay.css` | On-screen confirmation overlay and manual video-picker banner |
+| `recover.html/js/css` | "Recovered clips" page, opened when a tab navigated or closed while recording |
 | `icons/` | Toolbar icons (16/48/128px) |
 
 **Core components:**
-- **Background service worker.** Tracks, per tab, which frame(s) currently hold a video (needed because the player can live inside an iframe, or several can play at once across frames); resolves which one is "active" the same way a single frame would (playing > largest visible). Also owns the self-healing mechanism: on startup it pings every open tab, and re-injects `content.js` via `chrome.scripting` wherever no live script responds.
+- **Background service worker.** Tracks, per tab, which frame(s) currently hold a video (needed because the player can live inside an iframe, or several can play at once across frames); resolves which one is "active" the same way a single frame would (playing > largest visible). Also keeps the crash-safe copy of a clip being recorded (chunks streamed over a port into IndexedDB) and opens the recovery page if the recording tab goes away. Also owns the self-healing mechanism: on startup it pings every open tab, and re-injects `content.js` via `chrome.scripting` wherever no live script responds.
 - **Content script.** One instance per frame. Each instance announces itself on load and any previous instance in the same document tears itself down cleanly (listeners removed, observers disconnected) — this is what makes re-injection safe without risking two copies acting on the same keypress. It owns frame stepping, speed, the independent volume layer, the manual loop implementation, capability detection, and the manual video picker.
 - **Popup / Options pages.** Communicate with the content script via `chrome.runtime` messaging, resolving the correct target frame through the background worker, with automatic retries to cover the brief window right after a page loads.
 
@@ -189,8 +201,8 @@ Manifest V3, no bundler, no runtime dependencies.
 - Volume amplification above 100% may be unavailable on cross-origin video without CORS headers.
 - The floating window mode requires Chrome/Edge 116+ (Document Picture-in-Picture API); the button simply doesn't appear on unsupported browsers.
 - Automatic video detection, despite the safeguards above, can still occasionally miss on specific sites or edge cases that haven't been fully characterized yet (closed shadow roots, for example). The manual video picker is the reliable fallback — it works regardless of the underlying cause.
-- A clip being recorded is lost if the tab is closed or navigates to another page before you stop it.
-- Only `<video>` elements are controlled; `<audio>` elements are not.
+- A recovered clip (tab navigated or closed while recording) can miss its last second, and, like any WebM written by `MediaRecorder`, may not be seekable in every player. If the browser itself is closed while recording, the clip is offered the next time it starts.
+- `<audio>` elements inside shadow DOM, or audio-only players that haven't started playing and show no controls, aren't detected automatically.
 
 ## Development
 
