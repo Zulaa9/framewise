@@ -360,3 +360,7 @@ h2 { font-size: 14px; margin: 0 0 12px; color: var(--color-accent); }
 .page-footer .sep { opacity: 0.6; }
 .page-footer a { color: var(--color-ink-subtle); text-decoration: none; }
 .page-footer a:hover { color: var(--color-accent); text-decoration: underline; }
+
+/* Indicador de cambios pendientes junto a "Guardar cambios" (ver markDirty en options.js). */
+.unsaved-msg { color: var(--color-accent-amber); font-size: 12.5px; margin-left: 10px; }
+.unsaved-msg.hidden { display: none; }

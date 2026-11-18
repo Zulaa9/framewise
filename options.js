@@ -2,6 +2,39 @@ let settings = null;
 let recordingId = null;
 let currentScope = "global"; // "global" | hostname
 
+// ---------- Cambios sin guardar ----------
+// Todo lo que se edita en esta página (campos, presets, atajos, dominios) vive solo en memoria hasta
+// pulsar "Guardar cambios". Antes, cualquier escritura en storage desde OTRO contexto —que pasa sin
+// parar mientras se ve un vídeo: la velocidad y el volumen recordados por sitio se guardan en cada
+// cambio— recargaba "settings" entero y tiraba a la basura, sin avisar, todo lo editado aquí.
+let dirty = false;
+// Tras importar un archivo, también hay que guardar lo que normalmente no se edita aquí (pausas y
+// valores recordados por sitio), porque vienen del archivo.
+let importPending = false;
+
+// Claves que esta página edita y guarda. El resto (pausas por dominio, valores recordados por sitio)
+// los escriben el popup y las pestañas de vídeo; aquí solo se muestran y se guardan tras importar.
+// "lang" no está aquí: el interruptor ES/EN lo guarda al instante (ver setLang).
+const PAGE_OWNED_KEYS = [
+  "fps", "multiFrameCount", "speedStep", "seekSeconds", "showOverlay", "frameStepAudio",
+  "rememberSpeedPerDomain", "wheelSpeedControl", "volumeMax", "volumeStep", "rememberVolumePerDomain",
+  "speedPresets", "shortcuts", "domainOverrides"
+];
+const EXTERNAL_KEYS = ["pausedDomains", "domainSpeeds", "domainFps", "domainVolumes"];
+
+function markDirty() {
+  dirty = true;
+  const el = document.getElementById("unsavedMsg");
+  if (el) el.classList.remove("hidden");
+}
+
+function clearDirty() {
+  dirty = false;
+  importPending = false;
+  const el = document.getElementById("unsavedMsg");
+  if (el) el.classList.add("hidden");
+}
+
 function q(id) { return document.getElementById(id); }
 function lang() { return currentLang(settings); }
 
@@ -68,9 +101,11 @@ function renderPresetChips() {
       const removeBtn = document.createElement("button");
       removeBtn.textContent = "×";
       removeBtn.title = T(lang(), "options.presetChip.remove.title", { label });
+      removeBtn.setAttribute("aria-label", removeBtn.title);
       removeBtn.addEventListener("click", () => {
         settings.speedPresets = settings.speedPresets.filter((v) => Math.abs(v - p) > 0.0001);
         if (settings.speedPresets.length === 0) settings.speedPresets = [1];
+        markDirty();
         renderPresetChips();
       });
       chip.appendChild(text);
@@ -95,6 +130,7 @@ function addPresetFromInput() {
   }
   if (!settings.speedPresets.some((v) => Math.abs(v - value) < 0.0001)) {
     settings.speedPresets.push(value);
+    markDirty();
     renderPresetChips();
   }
   input.value = "";
@@ -123,6 +159,7 @@ function addQuarterStepUp() {
   if (next > SPEED_MAX) return; // fuera del rango real admitido — el botón ya se deshabilita antes de llegar aquí
   if (!settings.speedPresets.some((v) => Math.abs(v - next) < 0.0001)) {
     settings.speedPresets.push(next);
+    markDirty();
     renderPresetChips();
   }
 }
@@ -135,6 +172,7 @@ function removeHighestPreset() {
   const max = Math.max(...gridValues);
   settings.speedPresets = settings.speedPresets.filter((v) => Math.abs(v - max) > 0.0001);
   if (settings.speedPresets.length === 0) settings.speedPresets = [1];
+  markDirty();
   renderPresetChips();
 }
 
@@ -191,6 +229,7 @@ function renderShortcuts() {
   Object.keys(ACTION_DEFS).forEach((id) => {
     const row = document.createElement("div");
     row.className = "shortcut-row";
+    row.dataset.action = id;
 
     const label = document.createElement("span");
     label.className = "label";
@@ -226,11 +265,13 @@ function renderShortcuts() {
 
     const recordBtn = document.createElement("button");
     recordBtn.textContent = T(lang(), "options.recordBtn");
+    recordBtn.setAttribute("aria-label", `${T(lang(), "options.recordBtn")}: ${label.textContent}`);
     recordBtn.addEventListener("click", () => startRecording(id, keycap, recordBtn));
 
     const clearBtn = document.createElement("button");
     clearBtn.textContent = T(lang(), "options.clearBtn");
     clearBtn.title = T(lang(), isGlobal ? "options.clearBtn.title.global" : "options.clearBtn.title.domain");
+    clearBtn.setAttribute("aria-label", `${T(lang(), "options.clearBtn")}: ${label.textContent}`);
     clearBtn.addEventListener("click", () => {
       if (isGlobal) {
         if (!settings.shortcuts) settings.shortcuts = {};
@@ -238,6 +279,7 @@ function renderShortcuts() {
       } else {
         settings.domainOverrides[currentScope][id] = "";
       }
+      markDirty();
       renderShortcuts();
       renderScopeSelect();
     });
@@ -252,6 +294,7 @@ function renderShortcuts() {
       inheritBtn.textContent = T(lang(), "options.inheritBtn");
       inheritBtn.addEventListener("click", () => {
         delete settings.domainOverrides[currentScope][id];
+        markDirty();
         renderShortcuts();
         renderScopeSelect();
       });
@@ -304,18 +347,21 @@ function startRecording(id, keycapEl, btnEl) {
         const clash = Object.keys(ACTION_DEFS)
           .filter((oid) => oid !== id)
           .map((oid) => [oid, effectiveGlobalShortcut(settings, oid)])
-          .find(([, shortcut]) => shortcut === combo);
+          .find(([, shortcut]) => shortcutsEqual(shortcut, combo));
         if (!settings.shortcuts) settings.shortcuts = {};
         settings.shortcuts[id] = combo;
+        markDirty();
         renderShortcuts();
         warnIfClash(clash, combo);
       } else {
         if (!settings.domainOverrides[currentScope]) settings.domainOverrides[currentScope] = {};
         settings.domainOverrides[currentScope][id] = combo;
+        markDirty();
         renderShortcuts();
         renderScopeSelect();
         warnIfDomainClash(id, combo);
       }
+      warnIfRiskyCombo(id, combo);
     } else {
       renderShortcuts();
     }
@@ -338,13 +384,27 @@ function warnIfClash(clash, combo) {
   }
 }
 
+// Aviso (no bloqueo) para combinaciones que el navegador se queda o que AltGr imita — ver
+// shortcutWarningKind en settings.js. Se pinta bajo la fila de la propia acción recién grabada.
+function warnIfRiskyCombo(id, combo) {
+  const kind = shortcutWarningKind(combo);
+  if (!kind) return;
+  const row = document.querySelector(`.shortcut-row[data-action="${id}"]`);
+  if (!row) return;
+  const warn = document.createElement("div");
+  warn.className = "warn";
+  warn.setAttribute("role", "status");
+  warn.textContent = T(lang(), kind === "reserved" ? "options.warn.reserved" : "options.warn.altgr", { combo });
+  row.appendChild(warn);
+}
+
 // Colisión de atajos EFECTIVOS dentro de un dominio: comprueba la acción recién grabada (id/combo,
 // ya guardada en settings.domainOverrides[currentScope]) contra el resultado real de cada acción en
 // ese dominio — que puede venir de un override propio, o heredado del global si no hay override (o
 // si el override está vacío, es decir la acción está desactivada ahí, lo cual nunca choca con nada).
 function warnIfDomainClash(id, combo) {
   const effective = effectiveShortcutsForScope(currentScope);
-  const clashId = Object.keys(effective).find((oid) => oid !== id && effective[oid] && effective[oid] === combo);
+  const clashId = Object.keys(effective).find((oid) => oid !== id && effective[oid] && shortcutsEqual(effective[oid], combo));
   if (!clashId) return;
 
   const overrides = settings.domainOverrides[currentScope] || {};
@@ -364,17 +424,22 @@ function warnIfDomainClash(id, combo) {
 }
 
 // ---------- Formulario general ----------
+// Los campos numéricos se acotan a sus límites (NUMERIC_LIMITS, settings.js): los min/max del HTML
+// no impiden escribir a mano un 0 o un negativo, y un fps de 0 o un salto negativo rompían el paso
+// de fotograma y los saltos.
 function collectFormIntoSettings() {
-  settings.fps = parseFloat(q("fps").value) || DEFAULT_SETTINGS.fps;
-  settings.multiFrameCount = parseInt(q("multiFrameCount").value, 10) || DEFAULT_SETTINGS.multiFrameCount;
-  settings.speedStep = parseFloat(q("speedStep").value) || DEFAULT_SETTINGS.speedStep;
-  settings.seekSeconds = parseFloat(q("seekSeconds").value) || DEFAULT_SETTINGS.seekSeconds;
+  settings.fps = clampNumber(parseFloat(q("fps").value), "fps", DEFAULT_SETTINGS.fps);
+  settings.multiFrameCount = Math.round(
+    clampNumber(parseInt(q("multiFrameCount").value, 10), "multiFrameCount", DEFAULT_SETTINGS.multiFrameCount)
+  );
+  settings.speedStep = clampNumber(parseFloat(q("speedStep").value), "speedStep", DEFAULT_SETTINGS.speedStep);
+  settings.seekSeconds = clampNumber(parseFloat(q("seekSeconds").value), "seekSeconds", DEFAULT_SETTINGS.seekSeconds);
   settings.showOverlay = q("showOverlay").checked;
   settings.frameStepAudio = q("frameStepAudio").checked;
   settings.rememberSpeedPerDomain = q("rememberSpeedPerDomain").checked;
   settings.wheelSpeedControl = q("wheelSpeedControl").checked;
-  settings.volumeMax = parseInt(q("volumeMax").value, 10) || DEFAULT_SETTINGS.volumeMax;
-  settings.volumeStep = parseInt(q("volumeStep").value, 10) || DEFAULT_SETTINGS.volumeStep;
+  settings.volumeMax = Math.round(clampNumber(parseInt(q("volumeMax").value, 10), "volumeMax", DEFAULT_SETTINGS.volumeMax));
+  settings.volumeStep = Math.round(clampNumber(parseInt(q("volumeStep").value, 10), "volumeStep", DEFAULT_SETTINGS.volumeStep));
   settings.rememberVolumePerDomain = q("rememberVolumePerDomain").checked;
   settings.speedPresets = settings.speedPresets.slice().sort((a, b) => a - b);
   if (settings.speedPresets.length === 0) settings.speedPresets = DEFAULT_SETTINGS.speedPresets.slice();
@@ -409,7 +474,7 @@ function normalizeImportedShortcuts(raw) {
   if (isPlainObject(raw.shortcuts)) {
     const clean = {};
     Object.keys(raw.shortcuts).forEach((id) => {
-      if (KNOWN_ACTION_IDS.includes(id) && typeof raw.shortcuts[id] === "string") {
+      if (KNOWN_ACTION_IDS.includes(id) && typeof raw.shortcuts[id] === "string" && raw.shortcuts[id].length <= 64) {
         clean[id] = raw.shortcuts[id];
       }
     });
@@ -439,9 +504,10 @@ function validateImportedSettings(raw) {
     if (!Array.isArray(raw.speedPresets)) {
       return { ok: false, errorKey: "options.err.speedPresetsType" };
     }
-    const valid = raw.speedPresets.filter(
-      (v) => typeof v === "number" && isFinite(v) && v >= SPEED_MIN && v <= SPEED_MAX
-    );
+    const valid = raw.speedPresets
+      .filter((v) => typeof v === "number" && isFinite(v) && v >= SPEED_MIN && v <= SPEED_MAX)
+      .filter((v, i, arr) => arr.findIndex((o) => Math.abs(o - v) < 0.0001) === i)
+      .slice(0, 100);
     speedPresets = valid.length ? valid : DEFAULT_SETTINGS.speedPresets.slice();
   }
 
@@ -461,9 +527,10 @@ function validateImportedSettings(raw) {
     Object.keys(raw.domainOverrides).forEach((domain) => {
       const entry = raw.domainOverrides[domain];
       if (!isPlainObject(entry)) return; // dominio con forma inválida: se descarta sin invalidar el resto
+      if (!isValidHostKey(domain)) return; // clave que no es un hostname (o "__proto__"): fuera
       const cleanEntry = {};
       Object.keys(entry).forEach((id) => {
-        if (KNOWN_ACTION_IDS.includes(id) && typeof entry[id] === "string") {
+        if (KNOWN_ACTION_IDS.includes(id) && typeof entry[id] === "string" && entry[id].length <= 64) {
           cleanEntry[id] = entry[id];
         }
       });
@@ -471,16 +538,33 @@ function validateImportedSettings(raw) {
     });
   }
 
-  const domainMapFields = ["domainSpeeds", "domainFps", "domainVolumes"];
+  // Los valores recordados por sitio se validan uno a uno, con los mismos límites que se usan al
+  // aplicarlos: antes se copiaban tal cual y, p. ej., una velocidad de 1e9 hacía que el content
+  // script lanzara una excepción al inicializar cada vídeo de ese sitio.
+  const domainMapLimits = { domainSpeeds: [SPEED_MIN, SPEED_MAX], domainFps: [1, 240], domainVolumes: [0, 1000] };
   const domainMaps = {};
-  for (const field of domainMapFields) {
+  for (const field of Object.keys(domainMapLimits)) {
     if (raw[field] !== undefined && !isPlainObject(raw[field])) {
       return { ok: false, errorKey: "options.err.domainMapType", errorVars: { field } };
     }
-    domainMaps[field] = isPlainObject(raw[field]) ? { ...raw[field] } : { ...DEFAULT_SETTINGS[field] };
+    const [min, max] = domainMapLimits[field];
+    domainMaps[field] = isPlainObject(raw[field]) ? sanitizeDomainNumberMap(raw[field], min, max) : {};
+  }
+
+  // Las pausas por dominio también forman parte de la copia de seguridad (se exportaban, pero al
+  // importar se descartaban y, al guardar, se perdían las que hubiera).
+  if (raw.pausedDomains !== undefined && !isPlainObject(raw.pausedDomains)) {
+    return { ok: false, errorKey: "options.err.pausedDomainsType" };
+  }
+  const pausedDomains = {};
+  if (isPlainObject(raw.pausedDomains)) {
+    Object.keys(raw.pausedDomains).forEach((host) => {
+      if (isValidHostKey(host) && raw.pausedDomains[host] === true) pausedDomains[host] = true;
+    });
   }
 
   const numberOr = (v, fallback) => (typeof v === "number" && isFinite(v) ? v : fallback);
+  const limited = (key) => clampNumber(numberOr(raw[key], DEFAULT_SETTINGS[key]), key, DEFAULT_SETTINGS[key]);
   const boolOr = (v, fallback) => (typeof v === "boolean" ? v : fallback);
   // El idioma importado se respeta si viene en el archivo; si no, se conserva el que ya tuviera
   // esta instalación — importar una copia de seguridad no debería resetear la preferencia de
@@ -490,23 +574,24 @@ function validateImportedSettings(raw) {
   const normalized = {
     ...DEFAULT_SETTINGS,
     lang,
-    fps: numberOr(raw.fps, DEFAULT_SETTINGS.fps),
-    speedStep: numberOr(raw.speedStep, DEFAULT_SETTINGS.speedStep),
-    seekSeconds: numberOr(raw.seekSeconds, DEFAULT_SETTINGS.seekSeconds),
-    multiFrameCount: numberOr(raw.multiFrameCount, DEFAULT_SETTINGS.multiFrameCount),
+    fps: limited("fps"),
+    speedStep: limited("speedStep"),
+    seekSeconds: limited("seekSeconds"),
+    multiFrameCount: Math.round(limited("multiFrameCount")),
     showOverlay: boolOr(raw.showOverlay, DEFAULT_SETTINGS.showOverlay),
     frameStepAudio: boolOr(raw.frameStepAudio, DEFAULT_SETTINGS.frameStepAudio),
     wheelSpeedControl: boolOr(raw.wheelSpeedControl, DEFAULT_SETTINGS.wheelSpeedControl),
     rememberSpeedPerDomain: boolOr(raw.rememberSpeedPerDomain, DEFAULT_SETTINGS.rememberSpeedPerDomain),
-    volumeMax: numberOr(raw.volumeMax, DEFAULT_SETTINGS.volumeMax),
-    volumeStep: numberOr(raw.volumeStep, DEFAULT_SETTINGS.volumeStep),
+    volumeMax: Math.round(limited("volumeMax")),
+    volumeStep: Math.round(limited("volumeStep")),
     rememberVolumePerDomain: boolOr(raw.rememberVolumePerDomain, DEFAULT_SETTINGS.rememberVolumePerDomain),
     speedPresets,
     shortcuts,
     domainOverrides,
     domainSpeeds: domainMaps.domainSpeeds,
     domainFps: domainMaps.domainFps,
-    domainVolumes: domainMaps.domainVolumes
+    domainVolumes: domainMaps.domainVolumes,
+    pausedDomains
   };
 
   return { ok: true, settings: normalized };
@@ -531,9 +616,16 @@ function importSettingsFromFile(file) {
 
     settings = result.settings;
     currentScope = "global";
+    importPending = true;
     populateForm();
+    markDirty();
     alert(T(lang(), "options.alert.importSuccess"));
   };
+  // Un archivo de configuración real ocupa unos pocos KB; algo enorme no es una copia de seguridad.
+  if (file.size > 1024 * 1024) {
+    alert(T(lang(), "options.alert.importInvalidFile", { msg: `${Math.round(file.size / 1024)} KB` }));
+    return;
+  }
   reader.readAsText(file);
 }
 
@@ -543,10 +635,29 @@ function importSettingsFromFile(file) {
 // media escritura algo que el usuario pueda estar editando en ese instante.
 chrome.storage.onChanged.addListener((changes, area) => {
   if ((area !== "sync" && area !== "local") || !settings) return;
-  loadSettings((s) => {
-    settings = s;
+  if (!dirty) {
+    // Nada pendiente aquí: se puede recargar todo, campos incluidos, sin pisar nada del usuario.
+    loadSettings((s) => {
+      settings = s;
+      populateForm();
+    });
+    return;
+  }
+  // Hay cambios sin guardar: solo se incorpora lo que esta página no edita (y, tras importar,
+  // ni eso — lo importado es lo que el usuario quiere guardar).
+  if (importPending) return;
+  let touched = false;
+  if (changes.lang) {
+    settings.lang = changes.lang.newValue === "en" || changes.lang.newValue === "es" ? changes.lang.newValue : null;
     applyLang();
+  }
+  Object.keys(changes).forEach((key) => {
+    if (!EXTERNAL_KEYS.includes(key)) return;
+    const value = changes[key].newValue;
+    settings[key] = value && typeof value === "object" ? value : {};
+    touched = true;
   });
+  if (touched) renderScopeSelect();
 });
 
 // Si la pestaña de Opciones ya estaba abierta, el popup no puede "recargarla" — nos avisa por
@@ -595,6 +706,7 @@ function handleResetAllClick() {
     loadSettings((s) => {
       settings = s;
       currentScope = "global";
+      clearDirty();
       populateForm();
       const msg = q("savedMsg");
       msg.textContent = T(lang(), "options.savedMsg.reset");
@@ -625,8 +737,19 @@ function init() {
   q("langEn").addEventListener("click", () => setLang("en"));
 
   q("fpsPreset").addEventListener("change", (e) => {
-    if (e.target.value) q("fps").value = e.target.value;
+    if (e.target.value) {
+      q("fps").value = e.target.value;
+      markDirty();
+    }
   });
+
+  // Cualquier edición en los campos generales cuenta como cambio sin guardar.
+  ["fps", "multiFrameCount", "speedStep", "seekSeconds", "volumeMax", "volumeStep"].forEach((id) =>
+    q(id).addEventListener("input", markDirty)
+  );
+  ["showOverlay", "frameStepAudio", "rememberSpeedPerDomain", "wheelSpeedControl", "rememberVolumePerDomain"].forEach(
+    (id) => q(id).addEventListener("change", markDirty)
+  );
 
   // Vista previa en vivo: mientras se escribe, ya se actualiza tanto el propio label del campo como
   // los labels de los atajos que citan ese número (Retroceder {n} fotogramas/segundos) — sin esperar
@@ -647,6 +770,7 @@ function init() {
 
   q("resetPresets").addEventListener("click", () => {
     settings.speedPresets = DEFAULT_SETTINGS.speedPresets.slice();
+    markDirty();
     renderPresetChips();
   });
 
@@ -668,7 +792,10 @@ function init() {
       alert(T(lang(), "options.alert.invalidDomain"));
       return;
     }
-    if (!settings.domainOverrides[domain]) settings.domainOverrides[domain] = {};
+    if (!settings.domainOverrides[domain]) {
+      settings.domainOverrides[domain] = {};
+      markDirty();
+    }
     q("newDomainInput").value = "";
     renderScopeSelect();
     switchScope(domain);
@@ -678,6 +805,7 @@ function init() {
     if (currentScope === "global") return;
     if (!confirm(T(lang(), "options.confirm.removeDomain", { domain: currentScope }))) return;
     delete settings.domainOverrides[currentScope];
+    markDirty();
     currentScope = "global";
     renderScopeSelect();
     renderShortcuts();
@@ -691,12 +819,36 @@ function init() {
 
   q("save").addEventListener("click", () => {
     collectFormIntoSettings();
-    saveSettings(settings, () => {
+    populateForm(); // refleja los valores ya acotados (p. ej. un fps de 0 vuelve al mínimo)
+    const keys = importPending ? PAGE_OWNED_KEYS.concat(EXTERNAL_KEYS, ["lang"]) : PAGE_OWNED_KEYS;
+    const partial = {};
+    keys.forEach((k) => (partial[k] = settings[k]));
+    saveSettings(partial, (error) => {
+      if (error) {
+        alert(T(lang(), "options.alert.saveFailed", { msg: error }));
+        return;
+      }
+      clearDirty();
       const msg = q("savedMsg");
       msg.classList.remove("hidden");
       setTimeout(() => msg.classList.add("hidden"), 1500);
     });
   });
+
+  // El botón de importar es un <label> que envuelve un <input type="file"> oculto: no recibía el
+  // foco con el teclado. Se hace enfocable y se activa con Intro/Espacio como un botón normal.
+  const importLabel = q("importFile").closest("label");
+  if (importLabel) {
+    importLabel.tabIndex = 0;
+    importLabel.setAttribute("role", "button");
+    importLabel.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        q("importFile").click();
+      }
+    });
+  }
+
 
   q("resetAllBtn").addEventListener("click", handleResetAllClick);
 }
