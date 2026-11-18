@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Video in cross-origin iframe</title></head>
+<body>
+  <h1>Top frame without video</h1>
+  <iframe id="player" width="400" height="260" allow="autoplay; picture-in-picture"></iframe>
+  <script>
+    // Same file, other origin (the test server listens on two ports).
+    const other = new URL(location.href);
+    other.port = new URLSearchParams(location.search).get("otherPort");
+    other.pathname = other.pathname.replace("iframe.html", "single.html");
+    other.search = "";
+    document.getElementById("player").src = other.href;
+  </script>
+</body></html>

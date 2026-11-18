@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Video inside shadow DOM</title></head>
+<body>
+  <video-player id="p"></video-player>
+  <script>
+    customElements.define("video-player", class extends HTMLElement {
+      constructor() {
+        super();
+        this.attachShadow({ mode: "open" }).innerHTML =
+          '<video id="v" src="sample-30fps.webm" width="320" height="180" preload="auto" muted></video>';
+      }
+    });
+  </script>
+</body></html>
