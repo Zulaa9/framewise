@@ -130,7 +130,10 @@ var SYNC_DEFAULTS = {
   // hostname -> true si los atajos de teclado y la rueda están desactivados en ese sitio (botón de
   // pausa rápida del popup). Solo afecta a los listeners automáticos de teclado/rueda; los botones
   // del popup siguen funcionando igual.
-  pausedDomains: {}
+  pausedDomains: {},
+  // Duración máxima de un clip, en minutos (0 = sin límite). Al llegar, la grabación se para y se
+  // guarda sola: la grabación vive en memoria hasta pararla y una muy larga ocupaba cientos de MB.
+  clipMaxMinutes: 10
 };
 
 // Ajustes que crecen con el uso (uno por cada dominio visitado) y no tiene sentido sincronizar
@@ -353,6 +356,18 @@ function eventShortcutCandidates(e) {
   return list;
 }
 
+// Atajos alternativos para teclados donde [ ] y \ solo salen con AltGr (español, alemán, francés,
+// italiano…): ahí Ctrl+[, Ctrl+], Ctrl+\ y Ctrl+Shift+\ no se pueden pulsar. NO son los de fábrica
+// (eso cambiaría los atajos de quien ya los usa): Opciones los ofrece con un botón y solo se aplican
+// a las acciones que el usuario no haya personalizado. Combinaciones elegidas para no chocar con el
+// navegador ni con el sistema (Ctrl+Shift+flecha izquierda/derecha no es de Chrome, Edge ni macOS).
+var ALT_LAYOUT_SHORTCUTS = {
+  speedDown: "Ctrl+Shift+ArrowLeft",
+  speedUp: "Ctrl+Shift+ArrowRight",
+  speedReset: "Ctrl+Shift+Enter",
+  volumeReset: "Ctrl+Shift+Backspace"
+};
+
 // Combinaciones que la página nunca llega a recibir o que son ambiguas — se usan solo para AVISAR
 // al grabar un atajo en Opciones, nunca para impedirlo.
 var BROWSER_RESERVED_SHORTCUTS = [
@@ -380,7 +395,8 @@ var NUMERIC_LIMITS = {
   seekSeconds: [0.1, 600],
   multiFrameCount: [1, 500],
   volumeMax: [100, 1000],
-  volumeStep: [1, 100]
+  volumeStep: [1, 100],
+  clipMaxMinutes: [0, 120]
 };
 
 function clampNumber(v, key, fallback) {

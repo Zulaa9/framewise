@@ -215,7 +215,27 @@ var STRINGS = {
     "overlay.pickerBanner": "🎯 Haz clic sobre el vídeo que quieres controlar (Esc para cancelar)",
     "overlay.nativePause": "⏸ Pausa · {time}",
     "overlay.nativePlay": "▶ {time}",
-    "overlay.holdFrame": "▶ fotograma · {time}"
+    "overlay.holdFrame": "▶ fotograma · {time}",
+    "overlay.clipLimitReached": "💾 Límite de {min} min alcanzado: clip guardado",
+    "overlay.notForAudio": "⚠ No disponible en audio",
+    "popup.cap.audio": "No disponible en audio",
+    "popup.kind.audio": "Audio",
+    "options.altLayout.hint": "¿Tu teclado necesita AltGr para escribir [ ] y \\ (español, alemán, francés…)? Entonces no puedes pulsar los atajos de velocidad ni el de volumen 100 %. Puedes cambiarlos por Ctrl+Shift+← / → (velocidad), Ctrl+Shift+Intro (velocidad 1x) y Ctrl+Shift+Retroceso (volumen 100 %).",
+    "options.altLayout.detected": "Tu teclado parece ser de este tipo.",
+    "options.altLayout.btn": "Usar atajos alternativos",
+    "options.altLayout.done": "✔ Atajos alternativos puestos en {n} acciones. Pulsa «Guardar cambios» para conservarlos.",
+    "options.altLayout.skipped": "Sin cambios en: {list} (ya estaban personalizados o la combinación ya la usa otra acción).",
+    "options.clipMaxMinutes.label": "Duración máxima de un clip grabado, en minutos (al llegar se guarda solo; 0 = sin límite)",
+    "recover.title": "Framewise — Clips recuperados",
+    "recover.h1": "Clips recuperados",
+    "recover.intro": "Estos clips se estaban grabando cuando la pestaña navegó a otra página o se cerró. Framewise los ha guardado para que no se pierdan.",
+    "recover.empty": "No hay clips pendientes.",
+    "recover.item": "{date} · {size} · {page}",
+    "recover.download": "Descargar",
+    "recover.downloadAgain": "Descargar otra vez",
+    "recover.delete": "Eliminar",
+    "recover.downloaded": "✔ Descargado",
+    "recover.hint": "Los clips descargados se eliminan de aquí solos al cabo de un día."
   },
 
   en: {
@@ -421,7 +441,27 @@ var STRINGS = {
     "overlay.pickerBanner": "🎯 Click the video you want to control (Esc to cancel)",
     "overlay.nativePause": "⏸ Paused · {time}",
     "overlay.nativePlay": "▶ {time}",
-    "overlay.holdFrame": "▶ frame · {time}"
+    "overlay.holdFrame": "▶ frame · {time}",
+    "overlay.clipLimitReached": "💾 {min} min limit reached: clip saved",
+    "overlay.notForAudio": "⚠ Not available for audio",
+    "popup.cap.audio": "Not available for audio",
+    "popup.kind.audio": "Audio",
+    "options.altLayout.hint": "Does your keyboard need AltGr to type [ ] and \\ (Spanish, German, French…)? Then you can't press the speed shortcuts or the volume 100% one. You can switch them to Ctrl+Shift+← / → (speed), Ctrl+Shift+Enter (speed 1x) and Ctrl+Shift+Backspace (volume 100%).",
+    "options.altLayout.detected": "Your keyboard looks like one of these.",
+    "options.altLayout.btn": "Use alternative shortcuts",
+    "options.altLayout.done": "✔ Alternative shortcuts set on {n} actions. Press \"Save changes\" to keep them.",
+    "options.altLayout.skipped": "Unchanged: {list} (already customized, or another action already uses that combination).",
+    "options.clipMaxMinutes.label": "Maximum length of a recorded clip, in minutes (saved automatically when reached; 0 = no limit)",
+    "recover.title": "Framewise — Recovered clips",
+    "recover.h1": "Recovered clips",
+    "recover.intro": "These clips were being recorded when the tab navigated to another page or was closed. Framewise kept them so they aren't lost.",
+    "recover.empty": "No pending clips.",
+    "recover.item": "{date} · {size} · {page}",
+    "recover.download": "Download",
+    "recover.downloadAgain": "Download again",
+    "recover.delete": "Delete",
+    "recover.downloaded": "✔ Downloaded",
+    "recover.hint": "Downloaded clips are removed from here automatically after a day."
   }
 };
 
