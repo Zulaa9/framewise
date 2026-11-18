@@ -1,0 +1,11 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>Notification sound only</title></head>
+<body>
+  <!-- Efecto de sonido corto, sin controles: no debe tomarse como contenido controlable. -->
+  <audio id="blip" src="sample-blip-2s.webm" preload="auto"></audio>
+  <p>App con atajos propios en j/k/l.</p>
+  <script>
+    window.keys = [];
+    document.addEventListener("keydown", (e) => window.keys.push(e.key));
+  </script>
+</body></html>

@@ -64,6 +64,7 @@ test("ajustes de la 1.0.0: se cargan tal cual y no se reescribe nada al cargar",
   for (const [k, v] of Object.entries(V100_SYNC)) assert.deepEqual(s[k], v, k);
   for (const [k, v] of Object.entries(V100_LOCAL)) assert.deepEqual(s[k], v, k);
   assert.equal(s.lang, null, "sin idioma elegido: sigue al navegador");
+  assert.equal(s.clipMaxMinutes, 10, "ajuste nuevo de la 1.2.0: valor por defecto, sin escribirlo");
   assert.equal(effectiveGlobalShortcutIn(s, "screenshot"), "Ctrl+Shift+P");
   await load();
   assert.deepEqual(await raw(), before, "cargar no modifica storage (idempotente)");
@@ -113,8 +114,9 @@ test("legacy + deltas ya existentes: el delta nuevo gana sobre el antiguo", asyn
 });
 
 test("valores imposibles guardados no rompen nada: se acotan solo en memoria", async () => {
-  await seed({ fps: 0, multiFrameCount: -3, speedPresets: "no", volumeMax: 1e9 }, {});
+  await seed({ fps: 0, multiFrameCount: -3, speedPresets: "no", volumeMax: 1e9, clipMaxMinutes: -5 }, {});
   const s = await load();
+  assert.equal(s.clipMaxMinutes, 0);
   assert.equal(s.fps, 1);
   assert.equal(s.multiFrameCount, 1);
   assert.ok(Array.isArray(s.speedPresets) && s.speedPresets.length > 0);
