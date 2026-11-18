@@ -1,21 +1,87 @@
 // Service worker: badge del icono (velocidad actual por pestaña), resolución de a qué frame de la
 // pestaña dirigirse cuando hay vídeo en más de un frame, y reinyección automática de content
 // scripts huérfanos (ver reinjectOrphanedContentScripts más abajo).
-const tabVideoFrames = new Map(); // tabId -> Set<frameId> (frames que en algún momento tuvieron vídeo)
+// ---------- Registro de frames con vídeo ----------
+// tabId -> Set<frameId> (frames que en algún momento tuvieron vídeo). Antes vivía solo en memoria:
+// el service worker de MV3 se apaga tras ~30 s sin eventos y, al despertar, el registro estaba vacío
+// — y como cada content script avisa de cada vídeo una única vez, ya no se volvía a llenar. En
+// pestañas con el reproductor dentro de un iframe (el caso de Crunchyroll), el popup dejaba de
+// encontrar el vídeo pasado ese rato. Ahora se guarda también en chrome.storage.session (memoria del
+// navegador, se borra al cerrarlo, no necesita permisos nuevos) y se recupera al despertar.
+const tabVideoFrames = new Map();
+const SESSION_KEY = "tabVideoFrames";
+let registryLoaded = null;
+
+function loadRegistry() {
+  if (!registryLoaded) {
+    registryLoaded = new Promise((resolve) => {
+      try {
+        chrome.storage.session.get(SESSION_KEY, (res) => {
+          const raw = (!chrome.runtime.lastError && res && res[SESSION_KEY]) || {};
+          Object.keys(raw).forEach((tabId) => {
+            const frames = Array.isArray(raw[tabId]) ? raw[tabId].filter((f) => typeof f === "number") : [];
+            const set = tabVideoFrames.get(Number(tabId)) || new Set();
+            frames.forEach((f) => set.add(f));
+            tabVideoFrames.set(Number(tabId), set);
+          });
+          resolve();
+        });
+      } catch (err) {
+        resolve(); // navegador sin storage.session: se sigue solo con la memoria, como antes
+      }
+    });
+  }
+  return registryLoaded;
+}
+
+let persistTimer = null;
+function persistRegistry() {
+  if (persistTimer) return;
+  persistTimer = setTimeout(() => {
+    persistTimer = null;
+    const out = {};
+    tabVideoFrames.forEach((set, tabId) => {
+      if (set.size) out[tabId] = Array.from(set);
+    });
+    try {
+      chrome.storage.session.set({ [SESSION_KEY]: out }, () => void chrome.runtime.lastError);
+    } catch (err) {}
+  }, 50);
+}
+
+async function addVideoFrame(tabId, frameId) {
+  await loadRegistry();
+  if (!tabVideoFrames.has(tabId)) tabVideoFrames.set(tabId, new Set());
+  const set = tabVideoFrames.get(tabId);
+  if (set.has(frameId)) return;
+  set.add(frameId);
+  persistRegistry();
+}
+
+async function forgetTab(tabId) {
+  await loadRegistry();
+  if (tabVideoFrames.delete(tabId)) persistRegistry();
+}
+
+// Las llamadas a chrome.action devuelven promesas en MV3: si la pestaña ya no existe (se cerró
+// justo antes) se rechazan, y sin capturarlas aparecían como errores en el service worker.
+function ignoreError(p) {
+  if (p && typeof p.catch === "function") p.catch(() => {});
+}
 
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+  if (!msg || typeof msg.type !== "string" || sender.id !== chrome.runtime.id) return;
+
   if (msg.type === "speedChanged" && sender.tab) {
+    if (typeof msg.speed !== "number" || !isFinite(msg.speed)) return;
     const label = Math.abs(msg.speed - 1) < 0.001 ? "" : formatBadge(msg.speed);
-    chrome.action.setBadgeText({ tabId: sender.tab.id, text: label });
-    chrome.action.setBadgeBackgroundColor({ tabId: sender.tab.id, color: "#e8637a" });
+    ignoreError(chrome.action.setBadgeText({ tabId: sender.tab.id, text: label }));
+    ignoreError(chrome.action.setBadgeBackgroundColor({ tabId: sender.tab.id, color: "#e8637a" }));
     return;
   }
 
   if (msg.type === "videoFound" && sender.tab) {
-    const tabId = sender.tab.id;
-    const frameId = sender.frameId || 0;
-    if (!tabVideoFrames.has(tabId)) tabVideoFrames.set(tabId, new Set());
-    tabVideoFrames.get(tabId).add(frameId);
+    addVideoFrame(sender.tab.id, sender.frameId || 0);
     return;
   }
 
@@ -49,6 +115,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
 // vídeo volviera un instante después. El registro solo se limpia de verdad al navegar o cerrar la
 // pestaña (ver listeners más abajo).
 async function resolveBestFrame(tabId) {
+  await loadRegistry();
   const frames = tabVideoFrames.get(tabId);
   if (!frames || frames.size === 0) return null;
 
@@ -82,12 +149,12 @@ function formatBadge(speed) {
 // Limpia el badge y el registro de frames cada vez que la pestaña navega a una página nueva.
 chrome.tabs.onUpdated.addListener((tabId, changeInfo) => {
   if (changeInfo.status === "loading") {
-    chrome.action.setBadgeText({ tabId, text: "" });
-    tabVideoFrames.delete(tabId);
+    ignoreError(chrome.action.setBadgeText({ tabId, text: "" }));
+    forgetTab(tabId);
   }
 });
 
-chrome.tabs.onRemoved.addListener((tabId) => tabVideoFrames.delete(tabId));
+chrome.tabs.onRemoved.addListener((tabId) => forgetTab(tabId));
 
 // ---------- Reinyección automática de content scripts huérfanos ----------
 // Cuando la extensión se recarga o se actualiza, las pestañas que YA estaban abiertas se quedan
@@ -115,7 +182,12 @@ async function reinjectOrphanedContentScripts() {
     return;
   }
 
-  const injectable = tabs.filter((t) => t.id != null && /^https?:\/\//.test(t.url || ""));
+  // Solo pestañas ya cargadas: en una que aún está cargando (p. ej. las que se restauran al abrir el
+  // navegador) el content script del manifest todavía no ha llegado a ejecutarse, el ping falla, y
+  // reinyectar ahí solo duplicaba la inyección. Las descartadas (discarded) no tienen documento.
+  const injectable = tabs.filter(
+    (t) => t.id != null && /^https?:\/\//.test(t.url || "") && t.status === "complete" && !t.discarded
+  );
 
   await Promise.allSettled(injectable.map((tab) => ensureContentScript(tab.id)));
 }
