@@ -1,38 +1,15 @@
-#__fsc_overlay__ {
-  position: fixed;
-  top: 16px;
-  right: 16px;
-  background: rgba(0, 0, 0, 0.78);
-  color: #fff;
-  padding: 7px 16px;
-  border-radius: 8px;
-  font: 600 14px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif;
-  z-index: 2147483647;
-  opacity: 0;
-  transform: translateY(-6px);
-  transition: opacity 0.15s ease, transform 0.15s ease;
-  pointer-events: none;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
-  letter-spacing: 0.2px;
-}
-
-#__fsc_overlay__.__fsc_show__ {
-  opacity: 1;
-  transform: translateY(0);
-}
-
-#__fsc_picker_banner__ {
-  position: fixed;
-  top: 16px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(15, 15, 18, 0.94);
-  color: #fff;
-  padding: 10px 18px;
-  border-radius: 10px;
-  font: 600 14px/1.4 -apple-system, "Segoe UI", system-ui, sans-serif;
-  z-index: 2147483647;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.45);
-  border: 1px solid #e8637a;
-  pointer-events: none;
+/* El aviso en pantalla y el banner del selector manual se dibujan dentro de un shadow root cerrado
+   (ver UI_CSS en content.js), aislados del CSS de la página. Aquí solo queda el elemento anfitrión,
+   reforzado por si una regla de la página intentara mostrarlo como un elemento normal. Este archivo
+   se sigue inyectando (manifest y reinyección de background.js), así que debe seguir existiendo. */
+#__fsc_ui_host__ {
+  all: initial !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: visible !important;
+  pointer-events: none !important;
+  z-index: 2147483647 !important;
 }
