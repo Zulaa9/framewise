@@ -126,14 +126,16 @@ async function resolveBestFrame(tabId) {
         new Promise((resolve) => {
           chrome.tabs.sendMessage(tabId, { type: "getLocalVideoStatus" }, { frameId }, (resp) => {
             if (chrome.runtime.lastError || !resp || !resp.ok) resolve({ frameId, ok: false });
-            else resolve({ frameId, ok: true, playing: !!resp.playing, area: resp.area || 0 });
+            else resolve({ frameId, ok: true, playing: !!resp.playing, area: resp.area || 0, audio: !!resp.audio });
           });
         })
     )
   );
 
-  const valid = results.filter((r) => r.ok);
+  let valid = results.filter((r) => r.ok);
   if (valid.length === 0) return null;
+  // Un frame con vídeo gana siempre a uno que solo tiene audio.
+  if (valid.some((r) => !r.audio)) valid = valid.filter((r) => !r.audio);
 
   const playing = valid.filter((r) => r.playing);
   const pool = playing.length ? playing : valid;
@@ -218,3 +220,187 @@ function ensureContentScript(tabId) {
 
 chrome.runtime.onInstalled.addListener(() => reinjectOrphanedContentScripts());
 chrome.runtime.onStartup.addListener(() => reinjectOrphanedContentScripts());
+
+// ---------- Copia de seguridad de clips en grabación ----------
+// content.js envía por un puerto ("fsc-clip") cada trozo de la grabación en curso; aquí se guarda en
+// IndexedDB (almacenamiento propio de la extensión, sin permisos nuevos). Si el puerto se cierra sin
+// el aviso "done" —la pestaña navegó o se cerró a mitad de grabación—, el clip queda "huérfano" y se
+// abre recover.html para descargarlo. Si el clip terminó bien, content.js ya lo descargó y aquí se
+// borra la copia.
+const CLIP_DB = "framewise-clips";
+const ORPHAN_GRACE_MS = 1500; // margen para que un puerto caído por un reinicio del worker se reabra
+const STALE_RECORDING_MS = 20000; // sin trozos nuevos en este tiempo = la grabación ya no existe
+const DOWNLOADED_TTL_MS = 24 * 3600 * 1000;
+const ORPHAN_TTL_MS = 7 * 24 * 3600 * 1000;
+
+let clipDbPromise = null;
+function openClipDb() {
+  if (!clipDbPromise) {
+    clipDbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(CLIP_DB, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        if (!db.objectStoreNames.contains("clips")) db.createObjectStore("clips", { keyPath: "id" });
+        if (!db.objectStoreNames.contains("chunks")) db.createObjectStore("chunks", { keyPath: ["id", "seq"] });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => {
+        clipDbPromise = null;
+        reject(req.error);
+      };
+    });
+  }
+  return clipDbPromise;
+}
+
+function idbTx(stores, mode, fn) {
+  return openClipDb().then(
+    (db) =>
+      new Promise((resolve, reject) => {
+        const tx = db.transaction(stores, mode);
+        let result;
+        tx.oncomplete = () => resolve(result);
+        tx.onerror = () => reject(tx.error);
+        tx.onabort = () => reject(tx.error);
+        result = fn(tx);
+      })
+  );
+}
+
+function reqValue(req) {
+  return new Promise((resolve) => {
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => resolve(undefined);
+  });
+}
+
+function base64ToBytes(b64) {
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+
+async function clipUpsert(id, patch) {
+  await idbTx(["clips"], "readwrite", (tx) => {
+    const store = tx.objectStore("clips");
+    const req = store.get(id);
+    req.onsuccess = () => {
+      const now = Date.now();
+      const rec = req.result || { id, createdAt: now, state: "recording", bytes: 0, chunks: 0 };
+      Object.assign(rec, patch, { updatedAt: now });
+      store.put(rec);
+    };
+  });
+}
+
+async function clipAddChunk(id, seq, b64) {
+  if (typeof seq !== "number" || typeof b64 !== "string") return;
+  const bytes = base64ToBytes(b64);
+  await idbTx(["clips", "chunks"], "readwrite", (tx) => {
+    tx.objectStore("chunks").put({ id, seq, data: new Blob([bytes]) });
+    const store = tx.objectStore("clips");
+    const req = store.get(id);
+    req.onsuccess = () => {
+      const rec = req.result;
+      if (!rec) return;
+      rec.bytes += bytes.length;
+      rec.chunks += 1;
+      rec.updatedAt = Date.now();
+      if (rec.state === "orphaned") rec.state = "recording"; // el puerto se reabrió a tiempo
+      store.put(rec);
+    };
+  });
+}
+
+async function clipDelete(id) {
+  await idbTx(["clips", "chunks"], "readwrite", (tx) => {
+    tx.objectStore("clips").delete(id);
+    tx.objectStore("chunks").delete(IDBKeyRange.bound([id, -Infinity], [id, Infinity]));
+  });
+}
+
+async function listClips() {
+  return idbTx(["clips"], "readonly", (tx) => reqValue(tx.objectStore("clips").getAll())).then((r) => r || []);
+}
+
+// Marca como huérfanos los clips dados (si siguen sin trozos nuevos) y avisa / abre recover.html.
+async function orphanClips(ids) {
+  let any = false;
+  for (const id of ids) {
+    const all = await listClips();
+    const rec = all.find((c) => c.id === id);
+    if (!rec || rec.state !== "recording") continue;
+    if (!rec.chunks) {
+      await clipDelete(id); // nada grabado todavía: no hay nada que recuperar
+      continue;
+    }
+    await clipUpsert(id, { state: "orphaned" });
+    any = true;
+  }
+  if (any) showRecoverPage();
+}
+
+// Si ya hay una página de recuperación abierta, se refresca; si no, se abre una en segundo plano.
+function showRecoverPage() {
+  chrome.runtime.sendMessage({ type: "clipsChanged" }, (resp) => {
+    void chrome.runtime.lastError;
+    if (resp && resp.ok) return;
+    chrome.tabs.create({ url: chrome.runtime.getURL("recover.html"), active: false }, () => void chrome.runtime.lastError);
+  });
+}
+
+// Limpieza y recuperación de lo que quedó a medias (worker reiniciado, navegador cerrado grabando).
+async function sweepClips() {
+  let all;
+  try {
+    all = await listClips();
+  } catch (err) {
+    return;
+  }
+  const now = Date.now();
+  const stale = [];
+  for (const c of all) {
+    if (c.state === "recording" && now - c.updatedAt > STALE_RECORDING_MS) stale.push(c.id);
+    else if (c.state === "downloaded" && now - c.updatedAt > DOWNLOADED_TTL_MS) await clipDelete(c.id);
+    else if (c.state === "orphaned" && now - c.updatedAt > ORPHAN_TTL_MS) await clipDelete(c.id);
+  }
+  if (stale.length) await orphanClips(stale);
+}
+
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name !== "fsc-clip" || !port.sender || port.sender.id !== chrome.runtime.id || !port.sender.tab) return;
+  let clipId = null;
+  let done = false;
+  let writes = Promise.resolve();
+  port.onMessage.addListener((msg) => {
+    if (!msg || typeof msg.id !== "string" || msg.id.length > 64) return;
+    if (clipId && msg.id !== clipId) return;
+    clipId = msg.id;
+    if (msg.type === "start") {
+      const filename = typeof msg.filename === "string" && /^[\w.-]{1,100}$/.test(msg.filename) ? msg.filename : "clip.webm";
+      const mimeType = typeof msg.mimeType === "string" && /^video\/webm[\w;=,.\- ]*$/.test(msg.mimeType) ? msg.mimeType : "video/webm";
+      const page = typeof msg.page === "string" ? msg.page.slice(0, 500) : "";
+      writes = writes.then(() => clipUpsert(clipId, { state: "recording", filename, mimeType, page })).catch(() => {});
+    } else if (msg.type === "chunk") {
+      writes = writes.then(() => clipAddChunk(clipId, msg.seq, msg.data)).catch(() => {});
+    } else if (msg.type === "done") {
+      done = true;
+      writes = writes.then(() => clipDelete(clipId)).catch(() => {});
+    }
+  });
+  port.onDisconnect.addListener(() => {
+    if (!clipId || done) return;
+    const id = clipId;
+    // Espera a terminar de escribir y da un margen por si el content script vuelve a conectar
+    // (reinicio del worker); si en ese tiempo llegan trozos nuevos, el clip vuelve a "recording".
+    writes.then(() => setTimeout(() => {
+      listClips().then((all) => {
+        const rec = all.find((c) => c.id === id);
+        if (rec && rec.state === "recording" && Date.now() - rec.updatedAt >= ORPHAN_GRACE_MS - 100) orphanClips([id]);
+      }).catch(() => {});
+    }, ORPHAN_GRACE_MS));
+  });
+});
+
+sweepClips();
