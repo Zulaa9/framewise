@@ -1,0 +1,12 @@
+{
+  "name": "framewise-dev-tests",
+  "private": true,
+  "description": "Pruebas de desarrollo de Framewise (Playwright + Chromium). No forma parte de la extensión publicada.",
+  "scripts": {
+    "test": "node --test --test-concurrency=1 --test-timeout=120000 \"specs/*.test.js\"",
+    "pack": "node pack.js"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

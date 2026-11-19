@@ -5,7 +5,7 @@
 // "es" es el idioma por defecto histórico de la extensión (nunca cambia para quien no toque nada
 // — ver "lang" en SYNC_DEFAULTS, settings.js). "{clave}" dentro de un string se sustituye vía el
 // segundo argumento de T(); ver ejemplos de uso en popup.js/options.js/content.js.
-const STRINGS = {
+var STRINGS = {
   es: {
     // ---------- Popup: cabecera y avisos ----------
     "popup.pauseBtn.off": "Desactivar los atajos de teclado de Framewise en este sitio (por si chocan con los del sitio)",
@@ -176,6 +176,22 @@ const STRINGS = {
     // ---------- Overlay en pantalla (content.js) ----------
     "overlay.volumeUnavailable": "⚠ El volumen de la extensión no está disponible en este vídeo",
     "overlay.volume": "🔊 Volumen (extensión): {percent}%",
+    "overlay.volumeNeedsGesture": "⚠ Haz clic una vez en la página (o pulsa una tecla) y vuelve a intentarlo: el navegador no deja tocar el audio hasta entonces",
+    "overlay.playBlocked": "⚠ El navegador no ha dejado reproducir el vídeo",
+    "overlay.captureNotReady": "⚠ El vídeo aún no tiene imagen que capturar",
+    "popup.loading": "Buscando vídeo…",
+    "popup.speedSlider.aria": "Velocidad de reproducción",
+    "popup.volumeSlider.aria": "Volumen de la extensión",
+    "popup.clearDomainFps.label": "Quitar",
+    "popup.clearDomainFps.title": "Dejar de fijar el FPS en este sitio y volver a la detección automática",
+    "popup.useDetectedFps.none": "Todavía no se ha detectado el FPS: reproduce el vídeo unos segundos a velocidad normal",
+    "popup.volume.unavailable": "El volumen de la extensión no está disponible en este vídeo (origen cruzado sin CORS)",
+    "options.unsaved": "● Cambios sin guardar",
+    "options.alert.saveFailed": "No se ha podido guardar la configuración: {msg}",
+    "options.warn.reserved": "⚠ \"{combo}\" lo usa el propio navegador y normalmente no llega a la página",
+    "options.warn.altgr": "⚠ \"{combo}\" usa Ctrl+Alt: en teclados europeos AltGr se detecta igual y puede saltar al escribir caracteres como @ o €",
+    "options.err.pausedDomainsType": "\"pausedDomains\" debería ser un objeto (dominio → true).",
+    "options.importBtn.aria": "Importar configuración desde un archivo JSON",
     "overlay.loadingSegment": "⏳ Cargando ese tramo…",
     "overlay.seekBlocked": "⚠ No se puede retroceder más allá de lo cargado en este punto",
     "overlay.frameStep": "{dir} {sign}{frames} fotograma  ·  {time}",
@@ -199,7 +215,27 @@ const STRINGS = {
     "overlay.pickerBanner": "🎯 Haz clic sobre el vídeo que quieres controlar (Esc para cancelar)",
     "overlay.nativePause": "⏸ Pausa · {time}",
     "overlay.nativePlay": "▶ {time}",
-    "overlay.holdFrame": "▶ fotograma · {time}"
+    "overlay.holdFrame": "▶ fotograma · {time}",
+    "overlay.clipLimitReached": "💾 Límite de {min} min alcanzado: clip guardado",
+    "overlay.notForAudio": "⚠ No disponible en audio",
+    "popup.cap.audio": "No disponible en audio",
+    "popup.kind.audio": "Audio",
+    "options.altLayout.hint": "¿Tu teclado necesita AltGr para escribir [ ] y \\ (español, alemán, francés…)? Entonces no puedes pulsar los atajos de velocidad ni el de volumen 100 %. Puedes cambiarlos por Ctrl+Shift+← / → (velocidad), Ctrl+Shift+Intro (velocidad 1x) y Ctrl+Shift+Retroceso (volumen 100 %).",
+    "options.altLayout.detected": "Tu teclado parece ser de este tipo.",
+    "options.altLayout.btn": "Usar atajos alternativos",
+    "options.altLayout.done": "✔ Atajos alternativos puestos en {n} acciones. Pulsa «Guardar cambios» para conservarlos.",
+    "options.altLayout.skipped": "Sin cambios en: {list} (ya estaban personalizados o la combinación ya la usa otra acción).",
+    "options.clipMaxMinutes.label": "Duración máxima de un clip grabado, en minutos (al llegar se guarda solo; 0 = sin límite)",
+    "recover.title": "Framewise — Clips recuperados",
+    "recover.h1": "Clips recuperados",
+    "recover.intro": "Estos clips se estaban grabando cuando la pestaña navegó a otra página o se cerró. Framewise los ha guardado para que no se pierdan.",
+    "recover.empty": "No hay clips pendientes.",
+    "recover.item": "{date} · {size} · {page}",
+    "recover.download": "Descargar",
+    "recover.downloadAgain": "Descargar otra vez",
+    "recover.delete": "Eliminar",
+    "recover.downloaded": "✔ Descargado",
+    "recover.hint": "Los clips descargados se eliminan de aquí solos al cabo de un día."
   },
 
   en: {
@@ -366,6 +402,22 @@ const STRINGS = {
 
     "overlay.volumeUnavailable": "⚠ The extension's volume isn't available on this video",
     "overlay.volume": "🔊 Volume (extension): {percent}%",
+    "overlay.volumeNeedsGesture": "⚠ Click the page once (or press a key) and try again: the browser blocks audio changes until then",
+    "overlay.playBlocked": "⚠ The browser didn't allow the video to play",
+    "overlay.captureNotReady": "⚠ The video has no image to capture yet",
+    "popup.loading": "Looking for a video…",
+    "popup.speedSlider.aria": "Playback speed",
+    "popup.volumeSlider.aria": "Extension volume",
+    "popup.clearDomainFps.label": "Remove",
+    "popup.clearDomainFps.title": "Stop fixing the FPS on this site and go back to automatic detection",
+    "popup.useDetectedFps.none": "The FPS hasn't been detected yet: play the video for a few seconds at normal speed",
+    "popup.volume.unavailable": "The extension's volume isn't available on this video (cross-origin without CORS)",
+    "options.unsaved": "● Unsaved changes",
+    "options.alert.saveFailed": "Couldn't save the configuration: {msg}",
+    "options.warn.reserved": "⚠ \"{combo}\" is used by the browser itself and usually never reaches the page",
+    "options.warn.altgr": "⚠ \"{combo}\" uses Ctrl+Alt: on European keyboards AltGr is detected the same way and may fire while typing characters like @ or €",
+    "options.err.pausedDomainsType": "\"pausedDomains\" should be an object (domain → true).",
+    "options.importBtn.aria": "Import configuration from a JSON file",
     "overlay.loadingSegment": "⏳ Loading that part…",
     "overlay.seekBlocked": "⚠ Can't seek further back than what's loaded at this point",
     "overlay.frameStep": "{dir} {sign}{frames} frame  ·  {time}",
@@ -389,7 +441,27 @@ const STRINGS = {
     "overlay.pickerBanner": "🎯 Click the video you want to control (Esc to cancel)",
     "overlay.nativePause": "⏸ Paused · {time}",
     "overlay.nativePlay": "▶ {time}",
-    "overlay.holdFrame": "▶ frame · {time}"
+    "overlay.holdFrame": "▶ frame · {time}",
+    "overlay.clipLimitReached": "💾 {min} min limit reached: clip saved",
+    "overlay.notForAudio": "⚠ Not available for audio",
+    "popup.cap.audio": "Not available for audio",
+    "popup.kind.audio": "Audio",
+    "options.altLayout.hint": "Does your keyboard need AltGr to type [ ] and \\ (Spanish, German, French…)? Then you can't press the speed shortcuts or the volume 100% one. You can switch them to Ctrl+Shift+← / → (speed), Ctrl+Shift+Enter (speed 1x) and Ctrl+Shift+Backspace (volume 100%).",
+    "options.altLayout.detected": "Your keyboard looks like one of these.",
+    "options.altLayout.btn": "Use alternative shortcuts",
+    "options.altLayout.done": "✔ Alternative shortcuts set on {n} actions. Press \"Save changes\" to keep them.",
+    "options.altLayout.skipped": "Unchanged: {list} (already customized, or another action already uses that combination).",
+    "options.clipMaxMinutes.label": "Maximum length of a recorded clip, in minutes (saved automatically when reached; 0 = no limit)",
+    "recover.title": "Framewise — Recovered clips",
+    "recover.h1": "Recovered clips",
+    "recover.intro": "These clips were being recorded when the tab navigated to another page or was closed. Framewise kept them so they aren't lost.",
+    "recover.empty": "No pending clips.",
+    "recover.item": "{date} · {size} · {page}",
+    "recover.download": "Download",
+    "recover.downloadAgain": "Download again",
+    "recover.delete": "Delete",
+    "recover.downloaded": "✔ Downloaded",
+    "recover.hint": "Downloaded clips are removed from here automatically after a day."
   }
 };
 
@@ -449,5 +521,23 @@ function applyI18n(lang, root) {
   root.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
     el.placeholder = T(lang, el.getAttribute("data-i18n-placeholder"));
   });
+  root.querySelectorAll("[data-i18n-aria-label]").forEach((el) => {
+    el.setAttribute("aria-label", T(lang, el.getAttribute("data-i18n-aria-label")));
+  });
+  // Botones que solo muestran un icono (emoji): el lector de pantalla anunciaría el nombre del
+  // emoji ("botón ⏯") en vez de la acción. Se les da como nombre accesible su propio título.
+  root.querySelectorAll("button[data-i18n-title]").forEach((el) => syncIconButtonLabel(el));
   (root.ownerDocument || root).documentElement.lang = lang;
+}
+
+// Nombre accesible de un botón que solo tiene un icono: su title. Los botones con texto propio
+// (letras) ya se nombran solos y no se tocan. popup.js lo llama también cuando cambia un title a mano.
+function syncIconButtonLabel(el) {
+  if (!el) return;
+  const text = (el.textContent || "").trim();
+  if (/\p{L}/u.test(text)) {
+    el.removeAttribute("aria-label");
+    return;
+  }
+  if (el.title) el.setAttribute("aria-label", el.title);
 }

@@ -76,7 +76,7 @@
     <p class="hint" data-i18n-html="options.volume.hint"></p>
     <div class="field">
       <label for="volumeMax" data-i18n="options.volumeMax.label">Volumen máximo de la extensión (%)</label>
-      <input type="number" id="volumeMax" min="100" max="1000" step="25" />
+      <input type="number" id="volumeMax" min="100" step="25" />
       <p class="hint" data-i18n="options.volumeMax.hint"></p>
     </div>
     <div class="field">
@@ -99,6 +99,10 @@
       <input type="checkbox" id="showOverlay" />
       <label for="showOverlay" data-i18n="options.showOverlay.label">Mostrar aviso en pantalla al usar un atajo</label>
     </div>
+    <div class="field">
+      <label for="clipMaxMinutes" data-i18n="options.clipMaxMinutes.label">Duración máxima de un clip grabado, en minutos</label>
+      <input type="number" id="clipMaxMinutes" min="0" max="120" step="1" />
+    </div>
     <div class="field checkbox">
       <input type="checkbox" id="frameStepAudio" />
       <label for="frameStepAudio" data-i18n="options.frameStepAudio.label">Reproducir sonido real al pasar de fotograma a fotograma</label>
@@ -117,6 +121,12 @@
       <button id="removeDomainBtn" class="danger hidden" data-i18n="options.removeDomainBtn">Eliminar este dominio</button>
     </div>
 
+    <div id="altLayoutBox" class="alt-layout">
+      <p><span id="altLayoutDetected" class="alt-layout-detected hidden" data-i18n="options.altLayout.detected"></span> <span data-i18n="options.altLayout.hint"></span></p>
+      <button type="button" id="altLayoutBtn" data-i18n="options.altLayout.btn">Usar atajos alternativos</button>
+      <p id="altLayoutMsg" class="hint hidden" role="status"></p>
+    </div>
+
     <div id="shortcutList"></div>
   </section>
 
@@ -124,7 +134,7 @@
     <h2 data-i18n="options.backup.h2">Copia de seguridad</h2>
     <div class="field inline">
       <button id="exportBtn" class="link-btn-solid" data-i18n="options.exportBtn">⬇ Exportar configuración</button>
-      <label class="link-btn-solid file-label">
+      <label class="link-btn-solid file-label" data-i18n-aria-label="options.importBtn.aria">
         <span data-i18n="options.importBtn">⬆ Importar configuración</span>
         <input type="file" id="importFile" accept="application/json" hidden />
       </label>
@@ -141,6 +151,7 @@
   <div class="actions">
     <button id="save" class="primary" data-i18n="options.save">Guardar cambios</button>
     <span id="savedMsg" class="saved-msg hidden" data-i18n="options.savedMsg">✔ Guardado</span>
+    <span id="unsavedMsg" class="unsaved-msg hidden" role="status" data-i18n="options.unsaved">● Cambios sin guardar</span>
   </div>
 
   <footer class="page-footer">

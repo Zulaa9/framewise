@@ -21,8 +21,14 @@ function applyLang() {
 // Títulos de seekBack/seekForward incluyen el nº de segundos real configurado — no un valor fijo en
 // el HTML — así que se rellenan aquí en vez de quedar escritos en popup.html.
 function applyDynamicTitles() {
-  q("seekBack").title = T(lang(), "popup.seekBack.title", { n: settings.seekSeconds });
-  q("seekForward").title = T(lang(), "popup.seekForward.title", { n: settings.seekSeconds });
+  setTitle(q("seekBack"), T(lang(), "popup.seekBack.title", { n: settings.seekSeconds }));
+  setTitle(q("seekForward"), T(lang(), "popup.seekForward.title", { n: settings.seekSeconds }));
+}
+
+// Cambia el title de un botón y, si solo tiene icono, también su nombre accesible (aria-label).
+function setTitle(el, text) {
+  el.title = text;
+  syncIconButtonLabel(el);
 }
 
 // Botón de pausa rápida: desactiva solo los listeners de teclado/rueda de content.js en ESTE
@@ -39,7 +45,8 @@ function applyPausedUi() {
   btn.classList.remove("hidden");
   const isPaused = !!(settings.pausedDomains && settings.pausedDomains[activeHostname]);
   btn.textContent = isPaused ? "▶" : "⏸";
-  btn.title = T(lang(), isPaused ? "popup.pauseBtn.on" : "popup.pauseBtn.off");
+  setTitle(btn, T(lang(), isPaused ? "popup.pauseBtn.on" : "popup.pauseBtn.off"));
+  btn.setAttribute("aria-pressed", isPaused ? "true" : "false");
   btn.classList.toggle("paused-active", isPaused);
   hint.classList.toggle("hidden", !isPaused);
 }
@@ -58,6 +65,9 @@ function resolveVideoFrameId() {
 function sendToTabOnce(msg, frameId) {
   return new Promise((resolve) => {
     const opts = typeof frameId === "number" ? { frameId } : undefined;
+    // Sin frame concreto el mensaje llega a todos los frames: se marca para que los que no tienen
+    // vídeo no se adelanten a contestar "no hay vídeo" (ver onRuntimeMessage en content.js).
+    if (!opts) msg = { ...msg, broadcast: true };
     const cb = (resp) => {
       if (chrome.runtime.lastError) return resolve(null);
       resolve(resp);
@@ -137,7 +147,7 @@ function renderPresets(currentSpeed) {
 function setButtonAvailability(id, available, availableTitle, reasonIfNot) {
   const btn = q(id);
   btn.disabled = !available;
-  btn.title = available ? availableTitle : reasonIfNot;
+  setTitle(btn, available ? availableTitle : reasonIfNot);
 }
 
 // Para cosas que dependen del estado del buffer (cambia con el tiempo, no se puede "deshabilitar
@@ -145,7 +155,7 @@ function setButtonAvailability(id, available, availableTitle, reasonIfNot) {
 function setButtonWarning(id, warn, normalTitle, reasonIfWarn) {
   const btn = q(id);
   btn.classList.toggle("warn", warn);
-  btn.title = warn ? reasonIfWarn : normalTitle;
+  setTitle(btn, warn ? reasonIfWarn : normalTitle);
 }
 
 function applyCapabilities(caps, loopBroken) {
@@ -158,13 +168,58 @@ function applyCapabilities(caps, loopBroken) {
   setButtonWarning("toggleLoop", loopBroken, T(lang(), "popup.toggleLoop.title"), T(lang(), "popup.cap.loopBroken"));
 }
 
+// Con un <audio> (sin ningún vídeo en la página) no hay imagen: los controles de fotograma, captura,
+// clip y PiP se deshabilitan con su motivo, y la sección de FPS se oculta. El resto (velocidad,
+// volumen, saltos, bucle, silencio) funciona igual.
+const VIDEO_ONLY_BUTTONS = ["frameBack", "frameForward", "togglePip", "screenshot", "recordClip"];
+
+function applyMediaKind(isAudio) {
+  document.body.classList.toggle("audio-mode", isAudio);
+  if (isAudio) {
+    VIDEO_ONLY_BUTTONS.forEach((id) => {
+      q(id).disabled = true;
+      setTitle(q(id), T(lang(), "popup.cap.audio"));
+    });
+    q("stateBadge").textContent = `${T(lang(), "popup.kind.audio")} · ${q("stateBadge").textContent}`;
+  } else {
+    ["frameBack", "frameForward"].forEach((id) => {
+      q(id).disabled = false;
+      setTitle(q(id), T(lang(), `popup.${id}.title`));
+    });
+  }
+}
+
 // Mientras el popup está abierto sin más, refresca solo el tiempo/estado de reproducción (nada
 // del slider ni de los presets, para no interferir si el usuario está interactuando con ellos).
+// Si no había vídeo, cada tick vuelve a buscarlo: el popup ya no se queda en "No se encontró vídeo"
+// cuando el reproductor aparece un momento después de abrirlo (antes había que pulsar "Buscar de
+// nuevo"). Y si el vídeo desaparece con el popup abierto, tras unos fallos seguidos se muestra el
+// aviso en vez de dejar los controles congelados con datos viejos.
+let tickBusy = false;
+let consecutiveTickFailures = 0;
+let videoShown = false;
+
 async function tickTime() {
-  const resp = await sendToTab({ type: "getState" });
-  if (!resp || !resp.ok) return;
-  q("stateBadge").textContent = T(lang(), resp.paused ? "popup.state.paused" : "popup.state.playing");
-  q("timeBadge").textContent = `${formatTime(resp.currentTime)} / ${formatTime(resp.duration)}`;
+  if (tickBusy) return;
+  tickBusy = true;
+  try {
+    if (!videoShown) {
+      await refreshState();
+      return;
+    }
+    const resp = await sendToTabOnce({ type: "getState" }, await resolveVideoFrameId());
+    if (!resp || !resp.ok) {
+      consecutiveTickFailures++;
+      if (consecutiveTickFailures >= 3) await refreshState();
+      return;
+    }
+    consecutiveTickFailures = 0;
+    const state = T(lang(), resp.paused ? "popup.state.paused" : "popup.state.playing");
+    q("stateBadge").textContent = resp.kind === "audio" ? `${T(lang(), "popup.kind.audio")} · ${state}` : state;
+    q("timeBadge").textContent = `${formatTime(resp.currentTime)} / ${formatTime(resp.duration)}`;
+  } finally {
+    tickBusy = false;
+  }
 }
 
 let timeTicker = null;
@@ -181,11 +236,15 @@ function stopTimeTicker() {
 
 async function refreshState() {
   const resp = await sendToTab({ type: "getState" });
+  q("loadingHint").classList.add("hidden");
   if (!resp || !resp.ok) {
+    videoShown = false;
     q("noVideo").classList.remove("hidden");
     q("controls").classList.add("hidden");
     return;
   }
+  videoShown = true;
+  consecutiveTickFailures = 0;
   q("noVideo").classList.add("hidden");
   q("controls").classList.remove("hidden");
 
@@ -194,26 +253,53 @@ async function refreshState() {
   q("speedBadge").textContent = `${resp.playbackRate.toFixed(2)}x`;
   setupSlider();
   syncSliderToSpeed(resp.playbackRate);
+  q("speedSlider").setAttribute("aria-valuetext", `${resp.playbackRate.toFixed(2)}x`);
   q("toggleMute").textContent = resp.muted ? "🔇" : "🔊";
+  q("toggleMute").setAttribute("aria-pressed", resp.muted ? "true" : "false");
   q("toggleLoop").classList.toggle("active", !!resp.loop);
+  q("toggleLoop").setAttribute("aria-pressed", resp.loop ? "true" : "false");
+  q("togglePip").classList.toggle("active", !!resp.pip);
+  q("togglePip").setAttribute("aria-pressed", resp.pip ? "true" : "false");
   q("recordClip").textContent = T(lang(), resp.recording ? "popup.recordClip.label.recording" : "popup.recordClip.label.idle");
-  q("recordClip").title = T(lang(), resp.recording ? "popup.recordClip.title.recording" : "popup.recordClip.title.idle");
+  setTitle(q("recordClip"), T(lang(), resp.recording ? "popup.recordClip.title.recording" : "popup.recordClip.title.idle"));
   q("recordClip").classList.toggle("recording", !!resp.recording);
   renderPresets(resp.playbackRate);
   applyCapabilities(resp.capabilities, resp.loopBroken);
+  applyMediaKind(resp.kind === "audio");
 
   const volumeMax = resp.volumeMax || 300;
   q("volumeSlider").max = volumeMax;
   q("volumeSlider").value = resp.volume;
+  q("volumeSlider").setAttribute("aria-valuetext", `${resp.volume}%`);
   q("volumeBadge").textContent = `${resp.volume}%`;
   q("volumeMaxHint").textContent = T(lang(), "popup.volume.hint", { max: volumeMax });
+  // Vídeo de origen cruzado sin CORS: ya se sabe que el volumen propio no funciona aquí, así que
+  // se dice en vez de dejar un control que no hace nada.
+  const volumeBlocked = !!resp.volumeBlocked;
+  ["volumeSlider", "volumeUp", "volumeDown"].forEach((id) => {
+    q(id).disabled = volumeBlocked;
+    if (volumeBlocked) q(id).title = T(lang(), "popup.volume.unavailable");
+    else if (id === "volumeSlider") q(id).removeAttribute("title");
+  });
 
+  // El FPS fijado por sitio ya se puede quitar desde aquí (antes, una vez pulsado "Usar aquí", solo
+  // se deshacía restaurando toda la configuración). "Usar aquí" solo se habilita si hay algo
+  // detectado que usar.
+  const fpsBtn = q("useDetectedFps");
   if (resp.domainFps) {
     q("fpsInfo").textContent = T(lang(), "popup.fpsInfo.fixed", { fps: resp.domainFps.toFixed(3) });
-  } else if (resp.detectedFps) {
-    q("fpsInfo").textContent = T(lang(), "popup.fpsInfo.detected", { fps: resp.detectedFps.toFixed(3) });
+    fpsBtn.textContent = T(lang(), "popup.clearDomainFps.label");
+    setTitle(fpsBtn, T(lang(), "popup.clearDomainFps.title"));
+    fpsBtn.dataset.mode = "clear";
+    fpsBtn.disabled = false;
   } else {
-    q("fpsInfo").textContent = T(lang(), "popup.fpsInfo.global", { fps: settings.fps });
+    q("fpsInfo").textContent = resp.detectedFps
+      ? T(lang(), "popup.fpsInfo.detected", { fps: resp.detectedFps.toFixed(3) })
+      : T(lang(), "popup.fpsInfo.global", { fps: settings.fps });
+    fpsBtn.textContent = T(lang(), "popup.useDetectedFps.label");
+    setTitle(fpsBtn, T(lang(), resp.detectedFps ? "popup.useDetectedFps.title" : "popup.useDetectedFps.none"));
+    fpsBtn.dataset.mode = "use";
+    fpsBtn.disabled = !resp.detectedFps;
   }
 }
 
@@ -292,7 +378,10 @@ async function init() {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     activeTabId = tab && tab.id;
     try {
-      activeHostname = tab && tab.url ? new URL(tab.url).hostname : null;
+      // Solo páginas web: en chrome://extensions el "hostname" sería "extensions" y el botón de
+      // pausa por dominio aparecía para un sitio en el que la extensión no puede actuar.
+      const url = tab && tab.url ? new URL(tab.url) : null;
+      activeHostname = url && /^(https?|file):$/.test(url.protocol) && url.hostname ? url.hostname : null;
     } catch (e) {
       activeHostname = null;
     }
@@ -315,7 +404,7 @@ async function init() {
     startTimeTicker();
   });
 
-  window.addEventListener("unload", stopTimeTicker);
+  window.addEventListener("pagehide", stopTimeTicker); // "unload" está obsoleto en Chrome
 
   // Si Opciones (u otra copia del popup) cambia algo mientras este panel sigue abierto, se refleja
   // aquí sin esperar a que el usuario lo cierre y lo vuelva a abrir — mismo criterio que ya usan
@@ -358,7 +447,9 @@ async function init() {
   bind("volumeUp", () => sendToTab({ type: "runAction", id: "volumeUp" }));
   bind("volumeDown", () => sendToTab({ type: "runAction", id: "volumeDown" }));
   bind("volumeReset", () => sendToTab({ type: "runAction", id: "volumeReset" }));
-  bind("useDetectedFps", () => sendToTab({ type: "useDetectedFpsForDomain" }));
+  bind("useDetectedFps", () =>
+    sendToTab({ type: q("useDetectedFps").dataset.mode === "clear" ? "clearDomainFps" : "useDetectedFpsForDomain" })
+  );
 
   // Redes de seguridad para cuando no se encuentra vídeo (p. ej. justo tras recargar la
   // extensión, con content scripts huérfanos en pestañas que ya estaban abiertas).
@@ -378,7 +469,9 @@ async function init() {
     // desacoplada/flotante activeTabId no es "la pestaña actual" de este contexto, y
     // chrome.tabs.sendMessage no necesita ningún permiso especial para esto de todos modos.
     chrome.runtime.sendMessage({ type: "startVideoPickerOnTab", tabId: activeTabId }, () => void chrome.runtime.lastError);
-    window.close();
+    // Solo se cierra el popup de la barra (que taparía la página). La ventana aparte/flotante existe
+    // precisamente para quedarse abierta: antes este botón la cerraba también.
+    if (!isDetachedWindow) window.close();
   });
 
   q("speedSlider").addEventListener("input", async (e) => {

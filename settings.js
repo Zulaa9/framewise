@@ -1,10 +1,16 @@
 // Configuración por defecto y utilidades compartidas por content.js, popup.js, options.js y
 // background.js. Depende de i18n.js (T/currentLang/STRINGS) — debe cargarse después de él.
+//
+// Las declaraciones de nivel superior usan "var" (no "const") a propósito: este archivo puede
+// ejecutarse dos veces en el mismo mundo aislado de un frame (la inyección del manifest y la
+// reinyección de background.js pueden coincidir al arrancar el navegador o al instalar). Con
+// "const", la segunda ejecución lanzaba "SyntaxError: Identifier ... has already been declared"
+// en la consola de la página; con "var" simplemente se reasignan los mismos valores.
 
 // Rango real de velocidad admitido por el reproductor (ver setSpeed en content.js). Vive aquí para
 // que options.js pueda validar presets manuales contra el mismo límite sin duplicar los números.
-const SPEED_MIN = 0.07;
-const SPEED_MAX = 16;
+var SPEED_MIN = 0.07;
+var SPEED_MAX = 16;
 
 // ---------------------------------------------------------------------------------------------
 // Metadatos de cada acción — SIEMPRE vienen del código, nunca de chrome.storage.
@@ -36,7 +42,7 @@ const SPEED_MAX = 16;
 // elementos de DevTools); Ctrl+S (guardar página); cualquier Ctrl+Alt+* (en teclados europeos,
 // AltGr se reporta como ctrlKey+altKey a la vez, indistinguible de un Ctrl+Alt real); Ctrl+Flecha
 // sin Shift (en macOS son los atajos de Mission Control/Spaces, a nivel de sistema operativo).
-const ACTION_DEFS = {
+var ACTION_DEFS = {
   frameBack:          { labelKey: "action.frameBack",         shortcut: "Ctrl+,",               repeatable: true },
   frameForward:        { labelKey: "action.frameForward",      shortcut: "Ctrl+.",               repeatable: true },
   frameBackMulti:      { labelKey: "action.frameBackMulti",    shortcut: "Ctrl+Shift+,",         repeatable: true },
@@ -58,7 +64,7 @@ const ACTION_DEFS = {
 };
 
 // Qué ajuste numérico rellena el "{n}" del label de cada acción.
-const ACTION_LABEL_COUNT_SOURCE = {
+var ACTION_LABEL_COUNT_SOURCE = {
   frameBackMulti: "multiFrameCount",
   frameForwardMulti: "multiFrameCount",
   seekBack: "seekSeconds",
@@ -71,7 +77,7 @@ const ACTION_LABEL_COUNT_SOURCE = {
 // mayoría solo necesita su único default original (de antes de que todo pasara a llevar Ctrl); los
 // cuatro que han cambiado dos veces durante el desarrollo de esta función (screenshot, recordClip,
 // volumeUp, volumeDown) listan también el intermedio que tuvieron por el camino.
-const FORMER_DEFAULT_SHORTCUTS = {
+var FORMER_DEFAULT_SHORTCUTS = {
   frameBack: [","],
   frameForward: ["."],
   frameBackMulti: [""],
@@ -100,7 +106,7 @@ const FORMER_DEFAULT_SHORTCUTS = {
 // deliberada del usuario sobre un dominio concreto ("aquí, los atajos de Framewise no"), no un dato
 // que se acumule solo con el uso — encaja con el criterio de qué va a sync, no con el de qué va a
 // local (ver LOCAL_DEFAULTS más abajo).
-const SYNC_DEFAULTS = {
+var SYNC_DEFAULTS = {
   // null = "no elegido a mano todavía" — currentLang() (i18n.js) sigue entonces el idioma del
   // navegador en cada momento. Se fija a "es" o "en" en cuanto el usuario toca el interruptor de
   // idioma del popup o de Opciones, y a partir de ahí ya no se mueve solo.
@@ -124,12 +130,15 @@ const SYNC_DEFAULTS = {
   // hostname -> true si los atajos de teclado y la rueda están desactivados en ese sitio (botón de
   // pausa rápida del popup). Solo afecta a los listeners automáticos de teclado/rueda; los botones
   // del popup siguen funcionando igual.
-  pausedDomains: {}
+  pausedDomains: {},
+  // Duración máxima de un clip, en minutos (0 = sin límite). Al llegar, la grabación se para y se
+  // guarda sola: la grabación vive en memoria hasta pararla y una muy larga ocupaba cientos de MB.
+  clipMaxMinutes: 10
 };
 
 // Ajustes que crecen con el uso (uno por cada dominio visitado) y no tiene sentido sincronizar
 // entre equipos: van a chrome.storage.local, que tiene mucho más margen de cuota.
-const LOCAL_DEFAULTS = {
+var LOCAL_DEFAULTS = {
   // hostname -> última velocidad usada en ese sitio
   domainSpeeds: {},
   // hostname -> fps confirmado manualmente por el usuario para ese sitio (prioridad sobre la detección automática)
@@ -138,8 +147,8 @@ const LOCAL_DEFAULTS = {
   domainVolumes: {}
 };
 
-const DEFAULT_SETTINGS = { ...SYNC_DEFAULTS, ...LOCAL_DEFAULTS };
-const LOCAL_ONLY_KEYS = new Set(Object.keys(LOCAL_DEFAULTS));
+var DEFAULT_SETTINGS = { ...SYNC_DEFAULTS, ...LOCAL_DEFAULTS };
+var LOCAL_ONLY_KEYS = new Set(Object.keys(LOCAL_DEFAULTS));
 
 // ---------------------------------------------------------------------------------------------
 // Migración desde el formato antiguo (versiones donde "actions" guardaba label+shortcut+repeatable
@@ -197,6 +206,17 @@ function loadSettings(cb) {
         merged.domainVolumes = { ...(localStored.domainVolumes || {}) };
         merged.shortcuts = shortcuts;
         merged.pausedDomains = pausedDomains;
+        Object.keys(NUMERIC_LIMITS).forEach((key) => {
+          merged[key] = clampNumber(merged[key], key, SYNC_DEFAULTS[key]);
+        });
+        if (!Array.isArray(merged.speedPresets) || !merged.speedPresets.some((v) => typeof v === "number" && v > 0)) {
+          merged.speedPresets = SYNC_DEFAULTS.speedPresets.slice();
+        } else {
+          merged.speedPresets = merged.speedPresets.filter(
+            (v) => typeof v === "number" && isFinite(v) && v >= SPEED_MIN && v <= SPEED_MAX
+          );
+          if (!merged.speedPresets.length) merged.speedPresets = SYNC_DEFAULTS.speedPresets.slice();
+        }
         cb(merged);
       };
 
@@ -214,18 +234,26 @@ function loadSettings(cb) {
   });
 }
 
+// cb recibe el mensaje de error (o null si todo se guardó). Antes los errores de escritura se
+// perdían en silencio — p. ej. superar la cuota por elemento de storage.sync (8 KB) con muchos
+// overrides de dominio — y Opciones mostraba "Guardado" aunque no se hubiera guardado nada.
 function saveSettings(partial, cb) {
   const syncPart = {};
   const localPart = {};
   Object.keys(partial).forEach((key) => {
     (LOCAL_ONLY_KEYS.has(key) ? localPart : syncPart)[key] = partial[key];
   });
-  const done = () => cb && cb();
+  const write = (area, part) =>
+    new Promise((res) =>
+      chrome.storage[area].set(part, () => res(chrome.runtime.lastError ? chrome.runtime.lastError.message : null))
+    );
   const pending = [];
-  if (Object.keys(syncPart).length) pending.push(new Promise((res) => chrome.storage.sync.set(syncPart, res)));
-  if (Object.keys(localPart).length) pending.push(new Promise((res) => chrome.storage.local.set(localPart, res)));
-  if (pending.length) Promise.all(pending).then(done);
-  else done();
+  if (Object.keys(syncPart).length) pending.push(write("sync", syncPart));
+  if (Object.keys(localPart).length) pending.push(write("local", localPart));
+  Promise.all(pending).then((errors) => {
+    const error = errors.find((e) => e) || null;
+    if (cb) cb(error);
+  });
 }
 
 // Deja todo como recién instalado — incluye limpiar restos del formato antiguo ("actions" en sync,
@@ -243,7 +271,8 @@ function resetSettings(cb) {
 
 // Convierte un KeyboardEvent en una cadena de atajo estable, p.ej. "Ctrl+Shift+F"
 function eventToShortcut(e) {
-  if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) return null;
+  if (["Control", "Shift", "Alt", "Meta", "AltGraph", "CapsLock", "Dead", "Process", "Unidentified"].includes(e.key)) return null;
+  if (typeof e.key !== "string" || !e.key) return null;
   const parts = [];
   if (e.ctrlKey) parts.push("Ctrl");
   if (e.altKey) parts.push("Alt");
@@ -253,6 +282,157 @@ function eventToShortcut(e) {
   if (key === " ") key = "Space";
   parts.push(key.length === 1 ? key.toUpperCase() : key);
   return parts.join("+");
+}
+
+// Forma canónica de un atajo para COMPARAR (nunca para guardar: lo guardado sigue siendo lo que
+// produce eventToShortcut). eventToShortcut siempre pone en mayúscula la tecla de un carácter
+// ("k" -> "K"), pero ACTION_DEFS declara j/k/l en minúscula: comparando las cadenas tal cual, los
+// atajos de fábrica de Play/Pausa, Retroceder y Avanzar no coincidían nunca con ninguna pulsación.
+// Se separan los modificadores por prefijo (no con split("+")) para que la tecla "+" funcione.
+var SHORTCUT_MODIFIERS = ["Ctrl", "Alt", "Shift", "Meta"];
+
+function canonicalShortcut(shortcut) {
+  if (typeof shortcut !== "string" || !shortcut) return "";
+  let rest = shortcut;
+  const mods = new Set();
+  let found = true;
+  while (found) {
+    found = false;
+    for (const m of SHORTCUT_MODIFIERS) {
+      if (rest.length > m.length + 1 && rest.startsWith(m + "+")) {
+        mods.add(m);
+        rest = rest.slice(m.length + 1);
+        found = true;
+      }
+    }
+  }
+  const key = rest.length === 1 ? rest.toUpperCase() : rest;
+  return SHORTCUT_MODIFIERS.filter((m) => mods.has(m)).concat(key).join("+");
+}
+
+function shortcutsEqual(a, b) {
+  const ca = canonicalShortcut(a);
+  return !!ca && ca === canonicalShortcut(b);
+}
+
+// Tecla "física" (posición en un teclado US) de las teclas de puntuación, según KeyboardEvent.code.
+// Solo se usa como segunda opción cuando Shift cambia el carácter: con Shift pulsado, e.key de
+// "Ctrl+Shift+," llega como "<" (teclado US) o ";" (teclado español), así que los atajos de fábrica
+// Ctrl+Shift+, / Ctrl+Shift+. / Ctrl+Shift+\ no se podían pulsar en la práctica.
+var PUNCTUATION_CODE_KEYS = {
+  Comma: ",",
+  Period: ".",
+  Slash: "/",
+  Semicolon: ";",
+  Quote: "'",
+  BracketLeft: "[",
+  BracketRight: "]",
+  Backslash: "\\",
+  Minus: "-",
+  Equal: "=",
+  Backquote: "`"
+};
+
+// Todas las formas de atajo con las que una pulsación puede coincidir, por orden de prioridad: la
+// del carácter real (lo que se graba en Opciones) y, solo con Shift y una tecla de puntuación cuyo
+// carácter cambia con Shift, la de su posición física. No se aplica a letras ni números ni sin
+// Shift, para no reinterpretar pulsaciones normales en otras distribuciones (Dvorak, AZERTY…).
+function eventShortcutCandidates(e) {
+  const primary = eventToShortcut(e);
+  if (!primary) return [];
+  const list = [primary];
+  if (e.shiftKey && typeof e.key === "string" && e.key.length === 1 && !/[\p{L}\p{N}]/u.test(e.key)) {
+    const physical = PUNCTUATION_CODE_KEYS[e.code];
+    if (physical && physical !== e.key) {
+      const parts = [];
+      if (e.ctrlKey) parts.push("Ctrl");
+      if (e.altKey) parts.push("Alt");
+      parts.push("Shift");
+      if (e.metaKey) parts.push("Meta");
+      parts.push(physical);
+      list.push(parts.join("+"));
+    }
+  }
+  return list;
+}
+
+// Atajos alternativos para teclados donde [ ] y \ solo salen con AltGr (español, alemán, francés,
+// italiano…): ahí Ctrl+[, Ctrl+], Ctrl+\ y Ctrl+Shift+\ no se pueden pulsar. NO son los de fábrica
+// (eso cambiaría los atajos de quien ya los usa): Opciones los ofrece con un botón y solo se aplican
+// a las acciones que el usuario no haya personalizado. Combinaciones elegidas para no chocar con el
+// navegador ni con el sistema (Ctrl+Shift+flecha izquierda/derecha no es de Chrome, Edge ni macOS).
+var ALT_LAYOUT_SHORTCUTS = {
+  speedDown: "Ctrl+Shift+ArrowLeft",
+  speedUp: "Ctrl+Shift+ArrowRight",
+  speedReset: "Ctrl+Shift+Enter",
+  volumeReset: "Ctrl+Shift+Backspace"
+};
+
+// Combinaciones que la página nunca llega a recibir o que son ambiguas — se usan solo para AVISAR
+// al grabar un atajo en Opciones, nunca para impedirlo.
+var BROWSER_RESERVED_SHORTCUTS = [
+  "Ctrl+T", "Ctrl+N", "Ctrl+W", "Ctrl+Shift+T", "Ctrl+Shift+N", "Ctrl+Shift+W", "Ctrl+Tab",
+  "Ctrl+Shift+Tab", "Ctrl+K", "Ctrl+J", "Ctrl+L", "Ctrl+Shift+J", "Ctrl+Shift+I", "Ctrl+Shift+C",
+  "Ctrl+Shift+Delete", "Ctrl+Shift+B", "Ctrl+H", "Ctrl+D", "Ctrl+Shift+Q"
+];
+
+// "reserved" si el navegador se lo queda antes que la página, "altgr" si usa Ctrl+Alt (AltGr en
+// teclados europeos), null si no hay nada que advertir.
+function shortcutWarningKind(shortcut) {
+  const c = canonicalShortcut(shortcut);
+  if (!c) return null;
+  if (BROWSER_RESERVED_SHORTCUTS.some((r) => canonicalShortcut(r) === c)) return "reserved";
+  if (c.startsWith("Ctrl+Alt+")) return "altgr";
+  return null;
+}
+
+// Límites de cada ajuste numérico. Son los mismos que los min/max de los campos de options.html;
+// se aplican al importar un archivo y al cargar ajustes (solo en memoria: nunca se reescribe nada
+// guardado por cargarlo) para que un valor imposible (fps 0, salto negativo…) no rompa nada.
+var NUMERIC_LIMITS = {
+  fps: [1, 240],
+  speedStep: [0.01, 2],
+  seekSeconds: [0.1, 600],
+  multiFrameCount: [1, 500],
+  // Sin tope superior a propósito: el usuario decide cuánto amplificar (con audio muy bajo, ×10 a
+  // veces no basta). Solo se exige un número válido y al menos el 100 %.
+  volumeMax: [100, Infinity],
+  volumeStep: [1, 100],
+  clipMaxMinutes: [0, 120]
+};
+
+function clampNumber(v, key, fallback) {
+  const lim = NUMERIC_LIMITS[key];
+  const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v;
+  if (typeof n !== "number" || !isFinite(n)) return fallback;
+  if (!lim) return n;
+  return Math.max(lim[0], Math.min(lim[1], n));
+}
+
+// Valida un mapa hostname -> valor numérico (velocidades, fps o volúmenes recordados): descarta
+// entradas con clave o valor inválido en vez de dejar que un valor imposible llegue al <video>
+// (p. ej. playbackRate = 1e9 lanza una excepción).
+function sanitizeDomainNumberMap(map, min, max) {
+  const out = {};
+  if (!map || typeof map !== "object" || Array.isArray(map)) return out;
+  Object.keys(map).forEach((host) => {
+    if (!isValidHostKey(host)) return;
+    const v = map[host];
+    if (typeof v === "number" && isFinite(v) && v >= min && v <= max) out[host] = v;
+  });
+  return out;
+}
+
+function isValidHostKey(host) {
+  return (
+    typeof host === "string" &&
+    host.length > 0 &&
+    host.length <= 253 &&
+    host !== "__proto__" &&
+    host !== "constructor" &&
+    host !== "prototype" &&
+    /^[a-z0-9.\-_:\[\]]+$/i.test(host)
+  );
 }
 
 function formatTime(t) {

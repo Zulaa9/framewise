@@ -360,3 +360,19 @@ h2 { font-size: 14px; margin: 0 0 12px; color: var(--color-accent); }
 .page-footer .sep { opacity: 0.6; }
 .page-footer a { color: var(--color-ink-subtle); text-decoration: none; }
 .page-footer a:hover { color: var(--color-accent); text-decoration: underline; }
+
+/* Indicador de cambios pendientes junto a "Guardar cambios" (ver markDirty en options.js). */
+.unsaved-msg { color: var(--color-accent-amber); font-size: 12.5px; margin-left: 10px; }
+.unsaved-msg.hidden { display: none; }
+
+/* Aviso de atajos alternativos para teclados con AltGr */
+.alt-layout {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  background: var(--color-well);
+}
+.alt-layout p { margin: 0 0 8px; color: var(--color-ink-muted); }
+.alt-layout.highlight { border-color: var(--color-accent-amber); }
+.alt-layout-detected { color: var(--color-accent-amber); font-weight: 600; }

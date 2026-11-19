@@ -12,14 +12,16 @@
       <button id="pauseBtn" class="hidden" data-i18n-title="popup.pauseBtn.off">⏸</button>
       <button id="floatBtn" class="hidden" data-i18n-title="popup.floatBtn.title">📌</button>
       <button id="detachBtn" data-i18n-title="popup.detachBtn.title">🗗</button>
-      <button id="langToggle" class="lang-toggle" title="EN / ES">ES</button>
+      <button id="langToggle" class="lang-toggle" title="EN / ES" aria-label="Idioma / Language">ES</button>
       <button id="openOptions" data-i18n-title="popup.openOptions.title">⚙</button>
     </span>
   </header>
 
   <div id="pausedHint" class="paused-hint hidden" data-i18n="popup.pausedHint"></div>
 
-  <div id="noVideo" class="hint hidden">
+  <div id="loadingHint" class="hint" role="status" data-i18n="popup.loading"></div>
+
+  <div id="noVideo" class="hint hidden" role="status">
     <p data-i18n="popup.noVideo.message"></p>
     <div class="no-video-actions">
       <button id="retryBtn" data-i18n="popup.retryBtn"></button>
@@ -28,7 +30,7 @@
     </div>
   </div>
 
-  <section id="controls">
+  <section id="controls" class="hidden">
     <div class="row status">
       <span id="stateBadge">--</span>
       <span id="timeBadge">--:--</span>
@@ -56,25 +58,25 @@
 
     <div class="section-label"><span data-i18n="popup.speed.sectionLabel"></span> <span class="muted" data-i18n="popup.speed.hint"></span></div>
     <div class="row slider-row">
-      <button id="speedDown">−</button>
-      <input type="range" id="speedSlider" min="0" max="1" step="1" value="0" />
-      <button id="speedUp">+</button>
+      <button id="speedDown" data-i18n-title="action.speedDown">−</button>
+      <input type="range" id="speedSlider" min="0" max="1" step="1" value="0" data-i18n-aria-label="popup.speedSlider.aria" />
+      <button id="speedUp" data-i18n-title="action.speedUp">+</button>
     </div>
     <div id="speedPresets" class="presets"></div>
 
     <div class="section-label"><span data-i18n="popup.volume.sectionLabel"></span> <span class="muted" id="volumeMaxHint"></span></div>
     <div class="row slider-row">
-      <button id="volumeDown">−</button>
-      <input type="range" id="volumeSlider" min="0" max="300" step="5" value="100" />
-      <button id="volumeUp">+</button>
+      <button id="volumeDown" data-i18n-title="action.volumeDown">−</button>
+      <input type="range" id="volumeSlider" min="0" max="300" step="5" value="100" data-i18n-aria-label="popup.volumeSlider.aria" />
+      <button id="volumeUp" data-i18n-title="action.volumeUp">+</button>
     </div>
     <div class="row volume-row">
       <span id="volumeBadge">100%</span>
       <button id="volumeReset" data-i18n-title="popup.volumeReset.title">100%</button>
     </div>
 
-    <div class="section-label" data-i18n="popup.fps.sectionLabel"></div>
-    <div class="row fps-row">
+    <div class="section-label fps-only" data-i18n="popup.fps.sectionLabel"></div>
+    <div class="row fps-row fps-only">
       <span id="fpsInfo" data-i18n="popup.fpsInfo.detecting"></span>
       <button id="useDetectedFps" data-i18n-title="popup.useDetectedFps.title" data-i18n="popup.useDetectedFps.label"></button>
     </div>
